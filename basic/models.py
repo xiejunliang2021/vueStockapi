@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 class PolicyDetails(models.Model):
     """策略详情模型
@@ -31,25 +32,74 @@ class PolicyDetails(models.Model):
     stock = models.ForeignKey('Code', on_delete=models.CASCADE, verbose_name="股票")
     date = models.DateField(verbose_name="日期")
     first_buy_point = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="第一买点")
-    second_buy_point = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="第二买点", null=True, blank=True)
+    second_buy_point = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        verbose_name="第二买点", 
+        null=True, 
+        blank=True
+    )
     stop_loss_point = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="止损点")
     take_profit_point = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="止盈点")
-    strategy_type = models.CharField(max_length=50, verbose_name="策略类型")
-    signal_strength = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="信号强度")
-    success_rate = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="历史成功率")
-    holding_profit = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="持仓盈利")
-    holding_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="持仓价格")
-    current_status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='L', verbose_name="当前状态")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    strategy_type = models.CharField(max_length=50, verbose_name="策略类型", default='CONTINUOUS_LIMIT_UP')
+    signal_strength = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        verbose_name="信号强度",
+        default=0.80
+    )
+    success_rate = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        verbose_name="历史成功率",
+        default=0.00
+    )
+    holding_profit = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0, 
+        verbose_name="持仓盈利"
+    )
+    holding_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0, 
+        verbose_name="持仓价格"
+    )
+    current_status = models.CharField(
+        max_length=1, 
+        choices=STATUS_CHOICES, 
+        default='L', 
+        verbose_name="当前状态"
+    )
+    created_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="创建时间"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True, 
+        verbose_name="更新时间"
+    )
 
     class Meta:
         verbose_name = "策略详情"
         verbose_name_plural = "策略详情"
         unique_together = ('stock', 'date', 'strategy_type')
+        ordering = ['-date', 'stock']  # 添加默认排序
+        indexes = [
+            models.Index(fields=['date']),
+            models.Index(fields=['stock', 'date']),
+            models.Index(fields=['current_status']),
+        ]
 
     def __str__(self):
         return f"{self.stock.name} - {self.date}"
+
+    def save(self, *args, **kwargs):
+        # 如果是新创建的记录
+        if not self.pk:
+            self.created_at = timezone.now()
+        super().save(*args, **kwargs)
 
 
 class Code(models.Model):

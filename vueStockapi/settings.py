@@ -76,25 +76,19 @@ WSGI_APPLICATION = 'vueStockapi.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.oracle',
-        'NAME': config('NAME_ORACLE'),
-        'USER': config('USER_ORACLE'),
-        'PASSWORD': config('PASSWORD_ORACLE'),
+        'NAME': config('NAME_ORACLE',),
+        'USER': config('USER_ORACLE',),
+        'PASSWORD': config('PASSWORD_ORACLE',),
         'HOST': '',
         'PORT': '',
         'OPTIONS': {
+            #'wallet_location': config('WALLET_LOCATION',),
             'retry_count': 20,
             'retry_delay': 3,
-            'ssl_server_dn_match': True,
-            'connection_timeout': 60,
-            'threaded': True,
+            'ssl_server_dn_match': True
         },
-        'CONN_MAX_AGE': 60,
     }
 }
-
-# 添加数据库连接池配置
-DATABASE_CONNECTION_POOLING = True
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
