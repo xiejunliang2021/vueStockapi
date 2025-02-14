@@ -34,6 +34,8 @@ INSTALLED_APPS = [
     'coreapi',
     'django_filters',
     'corsheaders',
+    'django_celery_beat',
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -155,12 +157,17 @@ DOCS_ROOT = os.path.join(BASE_DIR, 'docs')
 DOCS_ACCESS = 'public'
 
 # Celery 配置
-CELERY_BROKER_URL = 'redis://localhost:6379/0'  # 使用Redis作为消息代理
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_CACHE_BACKEND = 'django-cache'
+CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Shanghai'
+CELERY_ENABLE_UTC = False
+
+# Celery Beat 设置
+DJANGO_CELERY_BEAT_TZ_AWARE = False
 
 # 已有的 Celery Beat 配置
 CELERY_BEAT_SCHEDULE = {
