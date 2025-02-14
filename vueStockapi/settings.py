@@ -1,6 +1,8 @@
 from decouple import config
 from pathlib import Path
 import oracledb
+import os
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,11 +30,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'basic',
-    # 自动生成接口文档
+    'rest_framework',
     'coreapi',
-    ]
+    'django_filters',
+    'corsheaders',
+]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -67,22 +72,26 @@ WSGI_APPLICATION = 'vueStockapi.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-        'default': {
+    'default': {
         'ENGINE': 'django.db.backends.oracle',
-        'NAME': config('NAME_ORACLE',),
-        'USER': config('USER_ORACLE',),
-        'PASSWORD': config('PASSWORD_ORACLE',),
+        'NAME': config('NAME_ORACLE'),
+        'USER': config('USER_ORACLE'),
+        'PASSWORD': config('PASSWORD_ORACLE'),
         'HOST': '',
         'PORT': '',
         'OPTIONS': {
-            #'wallet_location': config('WALLET_LOCATION',),
             'retry_count': 20,
             'retry_delay': 3,
-            'ssl_server_dn_match': True
+            'ssl_server_dn_match': True,
+            'connection_timeout': 60,
+            'threaded': True,
         },
+        'CONN_MAX_AGE': 60,
     }
+}
 
-        }
+# 添加数据库连接池配置
+DATABASE_CONNECTION_POOLING = True
 
 
 # Password validation
@@ -128,17 +137,76 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # DRF配置鉴权方式
 REST_FRAMEWORK = {
-    # 配置登录鉴权方式
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        # 'rest_framework.authentication.SessionAuthentication',
-        # 'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ),
-    # 配置过滤器
     'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend',),
-    # 接口文档的配置
-    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
-    # 配置分页
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,  # 每页返回的数据条数
+    'PAGE_SIZE': 10,
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ],
 }
+
+# 添加文档相关配置
+DOCS_ROOT = os.path.join(BASE_DIR, 'docs')
+DOCS_ACCESS = 'public'
+
+# Celery 配置
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # 使用Redis作为消息代理
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Shanghai'
+
+# 已有的 Celery Beat 配置
+CELERY_BEAT_SCHEDULE = {
+    'update-daily-data-and-signals': {
+        'task': 'basic.tasks.update_daily_data_and_signals',
+        'schedule': crontab(hour=17, minute=0),
+    },
+}
+
+# 日志配置
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs/debug.log'),
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'basic': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
+
+# CORS 配置
+CORS_ALLOW_ALL_ORIGINS = True  # 开发环境使用
+CORS_ALLOW_CREDENTIALS = True
