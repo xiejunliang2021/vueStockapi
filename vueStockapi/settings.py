@@ -82,7 +82,6 @@ DATABASES = {
         'HOST': '',
         'PORT': '',
         'OPTIONS': {
-            #'wallet_location': config('WALLET_LOCATION',),
             'retry_count': 20,
             'retry_delay': 3,
             'ssl_server_dn_match': True
