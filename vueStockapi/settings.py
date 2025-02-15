@@ -82,9 +82,13 @@ DATABASES = {
         'HOST': '',
         'PORT': '',
         'OPTIONS': {
+            'wallet_location': config('WALLET_LOCATION',),
             'retry_count': 20,
             'retry_delay': 3,
             'ssl_server_dn_match': True
+        },
+        'TEST': {
+            'NAME': 'test_' + config('NAME_ORACLE',),
         },
     }
 }
@@ -181,27 +185,19 @@ LOGGING = {
         },
     },
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs/debug.log'),
-            'formatter': 'verbose',
-        },
         'console': {
-            'level': 'INFO',
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': 'db_debug.log',
         },
     },
     'loggers': {
-        'django': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': True,
-        },
-        'basic': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
+        'django.db.backends': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
             'propagate': True,
         },
     },
