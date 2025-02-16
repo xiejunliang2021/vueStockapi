@@ -182,7 +182,7 @@ class TradingCalendar(models.Model):
     - is_trading_day: 是否为交易日
     - remark: 备注（如节假日说明）
     """
-    date = models.DateField(unique=True, verbose_name="日期")
+    date = models.DateField(unique=True, db_index=True, verbose_name="日期")
     is_trading_day = models.BooleanField(default=True, verbose_name="是否交易日")
     remark = models.CharField(max_length=100, blank=True, null=True, verbose_name="备注")
 
@@ -191,7 +191,6 @@ class TradingCalendar(models.Model):
         verbose_name_plural = "交易日历"
         ordering = ['date']
         indexes = [
-            models.Index(fields=['date']),
             models.Index(fields=['is_trading_day']),
         ]
 
