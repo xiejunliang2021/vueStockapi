@@ -1,5 +1,5 @@
 import tushare as ts
-from .models import Code, StockDailyData
+from .models import Code, StockDailyData, TradingCalendar
 from decouple import config
 from django.db import transaction, connection
 import pandas as pd
@@ -100,3 +100,63 @@ class StockDataFetcher:
                             volume=row['vol'],
                             amount=row['amount']
                         )
+
+    def fetch_trading_calendar(self, start_date=None, end_date=None):
+        """获取交易日历数据
+        
+        Args:
+            start_date (str): 开始日期，格式：YYYYMMDD
+            end_date (str): 结束日期，格式：YYYYMMDD
+            
+        Returns:
+            DataFrame: 包含交易日历数据的DataFrame
+        """
+        try:
+            df = self.pro.trade_cal(
+                start_date=start_date,
+                end_date=end_date,
+                fields='cal_date,is_open,pretrade_date'
+            )
+            return df
+        except Exception as e:
+            print(f"获取交易日历数据失败：{str(e)}")
+            return None
+
+    def update_trading_calendar(self, date_str=None):
+        """更新交易日历数据
+        
+        Args:
+            date_str (str): 指定日期，格式：YYYY-MM-DD，如果为None则获取当年数据
+            
+        Returns:
+            bool: 更新是否成功
+        """
+        try:
+            if date_str:
+                # 如果指定了日期，获取该年份的数据
+                year = datetime.strptime(date_str, '%Y-%m-%d').year
+                start_date = f"{year}0101"
+                end_date = f"{year}1231"
+            else:
+                # 获取当年数据
+                current_year = datetime.now().year
+                start_date = f"{current_year}0101"
+                end_date = f"{current_year}1231"
+
+            df = self.fetch_trading_calendar(start_date, end_date)
+            if df is not None:
+                with transaction.atomic():
+                    for _, row in df.iterrows():
+                        date = datetime.strptime(row['cal_date'], '%Y%m%d').date()
+                        TradingCalendar.objects.update_or_create(
+                            date=date,
+                            defaults={
+                                'is_trading_day': bool(row['is_open']),
+                                'remark': '交易日' if row['is_open'] else '非交易日'
+                            }
+                        )
+                return True
+            return False
+        except Exception as e:
+            print(f"更新交易日历失败：{str(e)}")
+            return False

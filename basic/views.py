@@ -1,12 +1,13 @@
 from rest_framework import generics
-from .models import PolicyDetails, Code
-from .serializers import PolicyDetailsSerializer, CodeSerializer
+from .models import PolicyDetails, Code, TradingCalendar
+from .serializers import PolicyDetailsSerializer, CodeSerializer, TradingCalendarSerializer
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .analysis import ContinuousLimitStrategy
 from datetime import datetime
+from .utils import StockDataFetcher
 
 class PolicyDetailsListCreateView(generics.ListCreateAPIView):
     queryset = PolicyDetails.objects.all()
@@ -75,5 +76,71 @@ class ManualStrategyAnalysisView(APIView):
             return Response({'error': '日期格式无效'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class TradingCalendarListCreateView(generics.ListCreateAPIView):
+    """交易日历列表和创建视图"""
+    queryset = TradingCalendar.objects.all()
+    serializer_class = TradingCalendarSerializer
+    filterset_fields = ['date', 'is_trading_day']
+
+    def post(self, request, *args, **kwargs):
+        date_str = request.data.get('date')
+        if date_str:
+            fetcher = StockDataFetcher()
+            success = fetcher.update_trading_calendar(date_str)
+            if success:
+                return Response({'message': '交易日历数据更新成功'})
+            return Response(
+                {'error': '获取交易日历数据失败'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        return super().post(request, *args, **kwargs)
+
+class TradingCalendarDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """交易日历详情、更新和删除视图"""
+    queryset = TradingCalendar.objects.all()
+    serializer_class = TradingCalendarSerializer
+    lookup_field = 'date'
+
+class CheckTradingDayView(generics.GenericAPIView):
+    """检查指定日期是否为交易日"""
+    
+    def get(self, request):
+        date_str = request.query_params.get('date')
+        
+        try:
+            if date_str:
+                check_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            else:
+                check_date = datetime.now().date()
+            
+            # 先查询数据库
+            trading_day = TradingCalendar.objects.filter(date=check_date).first()
+            
+            # 如果没有找到数据，从Tushare获取并保存
+            if not trading_day:
+                fetcher = StockDataFetcher()
+                success = fetcher.update_trading_calendar(date_str)
+                if success:
+                    trading_day = TradingCalendar.objects.filter(date=check_date).first()
+            
+            if trading_day:
+                return Response({
+                    'date': check_date,
+                    'is_trading_day': trading_day.is_trading_day,
+                    'remark': trading_day.remark
+                })
+            else:
+                return Response({
+                    'date': check_date,
+                    'is_trading_day': False,
+                    'remark': '获取交易日历数据失败'
+                })
+                
+        except ValueError:
+            return Response(
+                {'error': '日期格式无效，请使用 YYYY-MM-DD 格式'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 

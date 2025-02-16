@@ -171,3 +171,30 @@ class StockDailyData(models.Model):
         verbose_name_plural = "股票日线数据"
         unique_together = ('stock', 'trade_date')
 
+
+class TradingCalendar(models.Model):
+    """交易日历模型
+    
+    用于记录股市交易日期信息
+    
+    字段说明：
+    - date: 日期
+    - is_trading_day: 是否为交易日
+    - remark: 备注（如节假日说明）
+    """
+    date = models.DateField(unique=True, verbose_name="日期")
+    is_trading_day = models.BooleanField(default=True, verbose_name="是否交易日")
+    remark = models.CharField(max_length=100, blank=True, null=True, verbose_name="备注")
+
+    class Meta:
+        verbose_name = "交易日历"
+        verbose_name_plural = "交易日历"
+        ordering = ['date']
+        indexes = [
+            models.Index(fields=['date']),
+            models.Index(fields=['is_trading_day']),
+        ]
+
+    def __str__(self):
+        return f"{self.date} - {'交易日' if self.is_trading_day else '非交易日'}"
+
