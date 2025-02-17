@@ -312,19 +312,13 @@ class StockDataFetcher:
             }
 
     def fetch_and_filter_daily_data(self, trade_date=None, start_date=None, end_date=None):
-        """获取并过滤日线数据
-        
-        Args:
-            trade_date (str): 单个交易日期（YYYYMMDD格式）
-            start_date (str): 开始日期（YYYYMMDD格式）
-            end_date (str): 结束日期（YYYYMMDD格式）
-        
-        Returns:
-            DataFrame: 过滤后的股票数据
-        """
+        """获取并过滤日线数据"""
         try:
-            # 1. 获取数据库中的所有股票代码
-            valid_codes = set(Code.objects.values_list('ts_code', flat=True))
+            # 1. 一次性获取所有股票代码和对象的映射
+            codes_map = {
+                code.ts_code: code for code in Code.objects.all()
+            }
+            valid_codes = set(codes_map.keys())
             
             # 2. 从Tushare获取数据
             if trade_date:
@@ -363,10 +357,18 @@ class StockDataFetcher:
                 # 5. 转换日期格式
                 df['trade_date'] = pd.to_datetime(df['trade_date'])
                 
+                # 6. 添加stock对象到DataFrame
+                df['stock'] = df['ts_code'].map(codes_map)
+                
+                # 7. 记录处理信息
+                print("数据处理完成：")
+                print(f"- 总记录数：{len(df)}")
+                print(f"- 有效股票数：{len(df['ts_code'].unique())}")
+                
                 return df
             return None
         except Exception as e:
-            print(f"获取股票数据失败：{str(e)}")
+            print("获取股票数据失败：{}".format(str(e)))
             return None
 
     def update_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
@@ -422,28 +424,21 @@ class StockDataFetcher:
                 
                 if df is not None and not df.empty:
                     # 批量创建数据
-                    bulk_data = []
-                    stock_cache = {}  # 缓存股票对象，避免重复查询
-                    
-                    for _, row in df.iterrows():
-                        # 从缓存获取股票对象，如果没有则查询并缓存
-                        if row['ts_code'] not in stock_cache:
-                            stock_cache[row['ts_code']] = Code.objects.get(ts_code=row['ts_code'])
-                        
-                        bulk_data.append(
-                            StockDailyData(
-                                stock=stock_cache[row['ts_code']],
-                                trade_date=row['trade_date'],
-                                open=row['open'],
-                                high=row['high'],
-                                low=row['low'],
-                                close=row['close'],
-                                volume=row['vol'],
-                                amount=row['amount'],
-                                up_limit=row['up_limit'],
-                                down_limit=row['down_limit']
-                            )
+                    bulk_data = [
+                        StockDailyData(
+                            stock=row['stock'],
+                            trade_date=row['trade_date'],
+                            open=row['open'],
+                            high=row['high'],
+                            low=row['low'],
+                            close=row['close'],
+                            volume=row['vol'],
+                            amount=row['amount'],
+                            up_limit=row['up_limit'],
+                            down_limit=row['down_limit']
                         )
+                        for _, row in df.iterrows()
+                    ]
                     
                     # 批量保存数据
                     StockDailyData.objects.bulk_create(bulk_data)
@@ -451,9 +446,16 @@ class StockDataFetcher:
                     # 清理旧数据
                     cleanup_result = self.cleanup_old_data()
                     
+                    # 构建消息
+                    message_parts = [
+                        f"数据更新完成，共更新 {len(bulk_data)} 条记录"
+                    ]
+                    if cleanup_result and cleanup_result.get('message'):
+                        message_parts.append(cleanup_result['message'])
+                    
                     return {
                         'status': 'success',
-                        'message': f'数据更新完成，共更新 {len(bulk_data)} 条记录。{cleanup_result["message"]}'
+                        'message': '。'.join(message_parts)
                     }
                 else:
                     return {
@@ -462,5 +464,5 @@ class StockDataFetcher:
                     }
                 
         except Exception as e:
-            print(f"更新数据失败：{str(e)}")
+            print("更新数据失败：{}".format(str(e)))
             raise
