@@ -147,7 +147,20 @@ class CheckTradingDayView(generics.GenericAPIView):
             )
 
 class StockDailyDataUpdateView(APIView):
-    """更新股票日线数据视图"""
+    """更新股票日线数据视图
+    
+    功能说明：
+    1. 支持单日数据更新和日期范围更新
+    2. 自动验证交易日
+    3. 自动过滤无效股票代码
+    4. 批量保存数据
+    5. 自动清理旧数据
+    
+    请求参数：
+    - trade_date: 单个交易日期（YYYY-MM-DD格式）
+    - start_date: 开始日期（YYYY-MM-DD格式）
+    - end_date: 结束日期（YYYY-MM-DD格式）
+    """
     
     def post(self, request):
         trade_date = request.data.get('trade_date')
@@ -155,26 +168,74 @@ class StockDailyDataUpdateView(APIView):
         end_date = request.data.get('end_date')
         
         try:
-            fetcher = StockDataFetcher()
-            
-            if trade_date:
-                result = fetcher.update_all_stocks_daily_data(trade_date=trade_date)
-                return Response({'message': result['message']})
-            elif start_date and end_date:
-                result = fetcher.update_all_stocks_daily_data(
-                    start_date=start_date,
-                    end_date=end_date
-                )
-                return Response({'message': result['message']})
-            else:
+            # 参数验证
+            if not (trade_date or (start_date and end_date)):
                 return Response(
                     {'error': '请提供 trade_date 或 start_date 和 end_date'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            
+            # 日期格式验证
+            if trade_date:
+                try:
+                    datetime.strptime(trade_date, '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {'error': 'trade_date 格式无效，请使用 YYYY-MM-DD 格式'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    if start > end:
+                        return Response(
+                            {'error': 'start_date 不能晚于 end_date'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                except ValueError:
+                    return Response(
+                        {'error': '日期格式无效，请使用 YYYY-MM-DD 格式'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # 获取数据
+            fetcher = StockDataFetcher()
+            
+            if trade_date:
+                result = fetcher.update_all_stocks_daily_data(trade_date=trade_date)
+            else:
+                result = fetcher.update_all_stocks_daily_data(
+                    start_date=start_date,
+                    end_date=end_date
+                )
+            
+            # 根据结果状态返回不同的响应
+            if result['status'] == 'success':
+                return Response({
+                    'status': 'success',
+                    'message': result['message']
+                })
+            elif result['status'] == 'skipped':
+                return Response({
+                    'status': 'skipped',
+                    'message': result['message']
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'status': 'failed',
+                    'message': result['message']
+                }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
+            # 记录详细错误信息
+            print(f"更新数据时发生错误：{str(e)}")
             return Response(
-                {'error': str(e)},
+                {
+                    'status': 'error',
+                    'message': '更新数据失败',
+                    'error': str(e)
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
