@@ -312,13 +312,7 @@ class StockDataFetcher:
             }
 
     def update_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
-        """更新所有股票的日线数据
-        
-        Args:
-            trade_date (str): 交易日期（YYYY-MM-DD格式）
-            start_date (str): 开始日期（YYYY-MM-DD格式）
-            end_date (str): 结束日期（YYYY-MM-DD格式）
-        """
+        """更新所有股票的日线数据"""
         try:
             with transaction.atomic():
                 # 转换日期格式
@@ -361,34 +355,55 @@ class StockDataFetcher:
                     # 转换数据类型
                     df['trade_date'] = pd.to_datetime(df['trade_date'])
                     
+                    # 获取所有有效的股票代码
+                    valid_codes = set(Code.objects.values_list('ts_code', flat=True))
+                    
                     # 批量创建数据
                     bulk_data = []
+                    skipped_codes = set()
+                    
                     for _, row in df.iterrows():
-                        stock = Code.objects.get(ts_code=row['ts_code'])
-                        bulk_data.append(
-                            StockDailyData(
-                                stock=stock,
-                                trade_date=row['trade_date'],
-                                open=row['open'],
-                                high=row['high'],
-                                low=row['low'],
-                                close=row['close'],
-                                volume=row['vol'],
-                                amount=row['amount'],
-                                up_limit=row['up_limit'],
-                                down_limit=row['down_limit']
+                        if row['ts_code'] not in valid_codes:
+                            skipped_codes.add(row['ts_code'])
+                            continue
+                        
+                        try:
+                            stock = Code.objects.get(ts_code=row['ts_code'])
+                            bulk_data.append(
+                                StockDailyData(
+                                    stock=stock,
+                                    trade_date=row['trade_date'],
+                                    open=row['open'],
+                                    high=row['high'],
+                                    low=row['low'],
+                                    close=row['close'],
+                                    volume=row['vol'],
+                                    amount=row['amount'],
+                                    up_limit=row['up_limit'],
+                                    down_limit=row['down_limit']
+                                )
                             )
-                        )
+                        except Code.DoesNotExist:
+                            skipped_codes.add(row['ts_code'])
+                            continue
                     
                     # 批量保存数据
-                    StockDailyData.objects.bulk_create(bulk_data)
+                    if bulk_data:
+                        StockDailyData.objects.bulk_create(bulk_data)
                     
                     # 清理旧数据
                     cleanup_result = self.cleanup_old_data()
                     
+                    message = f'数据更新完成，共更新 {len(bulk_data)} 条记录。'
+                    if skipped_codes:
+                        message += f'\n跳过的股票代码: {", ".join(skipped_codes)}'
+                    if cleanup_result:
+                        message += f'\n{cleanup_result["message"]}'
+                    
                     return {
                         'status': 'success',
-                        'message': f'数据更新完成，共更新 {len(bulk_data)} 条记录。{cleanup_result["message"]}'
+                        'message': message,
+                        'skipped_codes': list(skipped_codes)
                     }
                 else:
                     return {
