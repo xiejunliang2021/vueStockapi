@@ -403,9 +403,13 @@ class StockDataFetcher:
                 if d.date not in existing_dates
             ]
             
+            if not dates_to_fetch:
+                return {
+                    'status': 'skipped',
+                    'message': '没有新数据需要更新'
+                }
+            
             print(f"需要获取 {len(dates_to_fetch)} 个日期的数据")
-            if dates_to_fetch:
-                print(f"日期列表: {', '.join(dates_to_fetch)}")
             
             # 4. 并发获取数据
             all_data = []
@@ -423,65 +427,65 @@ class StockDataFetcher:
                         else:
                             print(f"获取 {date} 的数据失败，返回为空")
                     except Exception as e:
-                        print(f"处理 {date} 的数据时出错：")
-                        print(f"错误类型: {type(e).__name__}")
-                        print(f"错误信息: {str(e)}")
-                        print("详细错误信息:")
-                        print(traceback.format_exc())
+                        print(f"处理数据时出错: {str(e)}")
             
             # 5. 合并数据
             if all_data:
                 try:
                     final_df = pd.concat(all_data, ignore_index=True)
-                    print(f"成功合并数据，总记录数: {len(final_df)}")
+                    total_records = len(final_df)
+                    print(f"成功合并数据，总记录数: {total_records}")
                     
-                    # 6. 保存数据
+                    # 6. 分批保存数据
+                    batch_size = 1000  # 每批1000条记录
+                    total_saved = 0
+                    
                     with transaction.atomic():
-                        bulk_data = [
-                            StockDailyData(
-                                stock=row['stock'],
-                                trade_date=row['trade_date'],
-                                open=row['open'],
-                                high=row['high'],
-                                low=row['low'],
-                                close=row['close'],
-                                volume=row['vol'],
-                                amount=row['amount'],
-                                up_limit=row['up_limit'],
-                                down_limit=row['down_limit']
-                            )
-                            for _, row in final_df.iterrows()
-                        ]
-                        
-                        StockDailyData.objects.bulk_create(bulk_data)
-                        print(f"成功保存 {len(bulk_data)} 条记录到数据库")
+                        for start_idx in range(0, total_records, batch_size):
+                            end_idx = min(start_idx + batch_size, total_records)
+                            batch_df = final_df.iloc[start_idx:end_idx]
+                            
+                            bulk_data = [
+                                StockDailyData(
+                                    stock=row['stock'],
+                                    trade_date=row['trade_date'],
+                                    open=row['open'],
+                                    high=row['high'],
+                                    low=row['low'],
+                                    close=row['close'],
+                                    volume=row['vol'],
+                                    amount=row['amount'],
+                                    up_limit=row['up_limit'],
+                                    down_limit=row['down_limit']
+                                )
+                                for _, row in batch_df.iterrows()
+                            ]
+                            
+                            StockDailyData.objects.bulk_create(bulk_data)
+                            total_saved += len(bulk_data)
+                            print(f"已保存 {total_saved}/{total_records} 条记录")
                         
                         # 清理旧数据
                         cleanup_result = self.cleanup_old_data()
-                        print(f"清理旧数据结果: {cleanup_result['message']}")
                         
                         return {
                             'status': 'success',
-                            'message': f'数据更新完成，共更新 {len(bulk_data)} 条记录。{cleanup_result["message"]}'
+                            'message': (
+                                f'数据更新完成，共更新 {total_saved} 条记录。'
+                                f'{cleanup_result["message"]}'
+                            )
                         }
                 except Exception as e:
-                    print("保存数据时出错：")
-                    print(f"错误类型: {type(e).__name__}")
-                    print(f"错误信息: {str(e)}")
-                    print("详细错误信息:")
-                    print(traceback.format_exc())
-                    raise
+                    error_msg = f"保存数据时出错: {str(e)}"
+                    print(error_msg)
+                    raise Exception(error_msg)
             else:
-                print("没有新数据需要更新")
                 return {
-                    'status': 'skipped',
-                    'message': '没有新数据需要更新'
+                    'status': 'failed',
+                    'message': '没有获取到有效数据'
                 }
             
         except Exception as e:
-            print("更新数据时出现错误：")
-            print(f"错误类型: {type(e).__name__}")
-            print(f"错误信息: {str(e)}")
-            print("详细错误信息:")
-            print(traceback.format_exc())
-            raise
+            error_msg = f"更新数据时出错: {str(e)}"
+            print(error_msg)
+            raise Exception(error_msg)
