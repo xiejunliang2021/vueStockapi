@@ -156,6 +156,8 @@ class StockDailyData(models.Model):
     - close: 收盘价
     - volume: 成交量（手）
     - amount: 成交额（元）
+    - up_limit: 涨停价
+    - down_limit: 跌停价
     """
     stock = models.ForeignKey(Code, on_delete=models.CASCADE, verbose_name="股票")
     trade_date = models.DateField(verbose_name="交易日期")
@@ -165,6 +167,8 @@ class StockDailyData(models.Model):
     close = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="收盘价")
     volume = models.BigIntegerField(verbose_name="成交量")
     amount = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="成交额")
+    up_limit = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="涨停价")
+    down_limit = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="跌停价")
 
     class Meta:
         verbose_name = "股票日线数据"
