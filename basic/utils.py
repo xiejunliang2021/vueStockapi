@@ -4,6 +4,7 @@ from decouple import config
 from django.db import transaction, connection
 import pandas as pd
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 
 
 # 初始化 Tushare
@@ -371,98 +372,43 @@ class StockDataFetcher:
             print("获取股票数据失败：{}".format(str(e)))
             return None
 
-    def update_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
-        """更新所有股票的日线数据"""
-        try:
-            with transaction.atomic():
-                if trade_date:
-                    check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
-                    # 检查是否为交易日
-                    is_trading = TradingCalendar.objects.filter(
-                        date=check_date,
-                        is_trading_day=True
-                    ).exists()
-                    
-                    if not is_trading:
-                        return {
-                            'status': 'skipped',
-                            'message': f'{trade_date} 不是交易日'
-                        }
-                    
-                    # 检查是否已有数据
-                    existing_data = StockDailyData.objects.filter(
-                        trade_date=check_date
-                    ).exists()
-                    
-                    if existing_data:
-                        return {'status': 'skipped', 'message': f'{trade_date} 的数据已存在'}
-                    
-                    tushare_date = check_date.strftime('%Y%m%d')
-                    df = self.fetch_and_filter_daily_data(trade_date=tushare_date)
-                else:
-                    check_start = datetime.strptime(start_date, '%Y-%m-%d').date()
-                    check_end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                    
-                    # 检查日期范围内是否已有数据
-                    existing_dates = StockDailyData.objects.filter(
-                        trade_date__range=[check_start, check_end]
-                    ).values_list('trade_date', flat=True).distinct()
-                    
-                    if existing_dates:
-                        existing_dates_str = [d.strftime('%Y-%m-%d') for d in existing_dates]
-                        return {
-                            'status': 'skipped',
-                            'message': f'以下日期的数据已存在: {", ".join(existing_dates_str)}'
-                        }
-                    
-                    tushare_start = check_start.strftime('%Y%m%d')
-                    tushare_end = check_end.strftime('%Y%m%d')
-                    df = self.fetch_and_filter_daily_data(
-                        start_date=tushare_start,
-                        end_date=tushare_end
-                    )
-                
-                if df is not None and not df.empty:
-                    # 批量创建数据
-                    bulk_data = [
-                        StockDailyData(
-                            stock=row['stock'],
-                            trade_date=row['trade_date'],
-                            open=row['open'],
-                            high=row['high'],
-                            low=row['low'],
-                            close=row['close'],
-                            volume=row['vol'],
-                            amount=row['amount'],
-                            up_limit=row['up_limit'],
-                            down_limit=row['down_limit']
-                        )
-                        for _, row in df.iterrows()
-                    ]
-                    
-                    # 批量保存数据
-                    StockDailyData.objects.bulk_create(bulk_data)
-                    
-                    # 清理旧数据
-                    cleanup_result = self.cleanup_old_data()
-                    
-                    # 构建消息
-                    message_parts = [
-                        f"数据更新完成，共更新 {len(bulk_data)} 条记录"
-                    ]
-                    if cleanup_result and cleanup_result.get('message'):
-                        message_parts.append(cleanup_result['message'])
-                    
-                    return {
-                        'status': 'success',
-                        'message': '。'.join(message_parts)
-                    }
-                else:
-                    return {
-                        'status': 'failed',
-                        'message': '没有新数据需要更新'
-                    }
-                
-        except Exception as e:
-            print("更新数据失败：{}".format(str(e)))
-            raise
+    def fetch_daily_batch(self, trade_date):
+        """获取单日所有股票数据"""
+        df = self.fetch_and_filter_daily_data(trade_date=trade_date)
+        return trade_date, df
+
+    def update_all_stocks_daily_data(self, start_date, end_date):
+        # 1. 获取需要更新的交易日
+        trading_days = TradingCalendar.objects.filter(
+            date__range=[start_date, end_date],
+            is_trading_day=True
+        ).order_by('-date')[:30]
+        
+        # 2. 获取已存在的日期
+        existing_dates = set(StockDailyData.objects.filter(
+            trade_date__range=[start_date, end_date]
+        ).values_list('trade_date', flat=True).distinct())
+        
+        # 3. 找出需要获取的日期
+        dates_to_fetch = [
+            d.date.strftime('%Y%m%d') 
+            for d in trading_days 
+            if d.date not in existing_dates
+        ]
+        
+        # 4. 并发获取数据
+        all_data = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [
+                executor.submit(self.fetch_daily_batch, date)
+                for date in dates_to_fetch
+            ]
+            for future in futures:
+                date, df = future.result()
+                if df is not None:
+                    all_data.append(df)
+        
+        # 5. 合并数据
+        if all_data:
+            final_df = pd.concat(all_data, ignore_index=True)
+            return final_df
