@@ -53,7 +53,7 @@ class StockDataFetcher:
         self.pro = ts.pro_api()
 
     def fetch_daily_data(self, ts_code, start_date, end_date):
-        """获取指定股票的日线数据
+        """获取指定股票的日线数据和涨跌停数据
         
         Args:
             ts_code (str): Tushare股票代码
@@ -61,45 +61,103 @@ class StockDataFetcher:
             end_date (str): 结束日期（YYYYMMDD）
             
         Returns:
-            DataFrame: 包含股票日线数据的DataFrame
-            None: 如果获取失败
+            DataFrame: 包含合并后的股票数据的DataFrame
         """
         try:
-            df = self.pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
-            return df
+            # 获取日线数据
+            df_daily = self.pro.daily(
+                ts_code=ts_code, 
+                start_date=start_date, 
+                end_date=end_date,
+                fields='ts_code,trade_date,open,high,low,close,vol,amount'
+            )
+            
+            # 获取涨跌停价格
+            df_limit = self.pro.stk_limit(
+                ts_code=ts_code,
+                start_date=start_date,
+                end_date=end_date,
+                fields='ts_code,trade_date,up_limit,down_limit'
+            )
+            
+            # 合并数据
+            if not df_daily.empty and not df_limit.empty:
+                df = pd.merge(
+                    df_daily, 
+                    df_limit, 
+                    on=['ts_code', 'trade_date'],
+                    how='inner'
+                )
+                return df
+            return None
         except Exception as e:
-            print(f"获取{ts_code}日线数据失败：{str(e)}")
+            print(f"获取{ts_code}数据失败：{str(e)}")
             return None
 
     def update_stock_daily_data(self):
         """更新所有股票的日线数据
         
         功能说明：
-        1. 获取数据库中的最新数据日期
-        2. 增量获取新数据
-        3. 批量保存到数据库
+        1. 获取最新的交易日数据
+        2. 保持最近1000个交易日的数据
+        3. 删除旧数据并保存新数据
         """
-        with transaction.atomic():
-            codes = Code.objects.all()
-            for code in codes:
-                # 获取最新的数据日期
-                latest_data = StockDailyData.objects.filter(stock=code).order_by('-trade_date').first()
-                start_date = (latest_data.trade_date + timedelta(days=1)).strftime('%Y%m%d') if latest_data else '20200101'
-                end_date = datetime.now().strftime('%Y%m%d')
-                
-                df = self.fetch_daily_data(code.ts_code, start_date, end_date)
-                if df is not None:
-                    for _, row in df.iterrows():
-                        StockDailyData.objects.create(
-                            stock=code,
-                            trade_date=row['trade_date'],
-                            open=row['open'],
-                            high=row['high'],
-                            low=row['low'],
-                            close=row['close'],
-                            volume=row['vol'],
-                            amount=row['amount']
-                        )
+        try:
+            with transaction.atomic():
+                codes = Code.objects.all()
+                for code in codes:
+                    # 获取该股票最新的数据日期
+                    latest_data = StockDailyData.objects.filter(
+                        stock=code
+                    ).order_by('-trade_date').first()
+                    
+                    if latest_data:
+                        start_date = (latest_data.trade_date + timedelta(days=1)).strftime('%Y%m%d')
+                    else:
+                        # 如果没有数据，获取最近1000个交易日的数据
+                        calendar = TradingCalendar.objects.filter(
+                            is_trading_day=True
+                        ).order_by('-date')[:1000]
+                        if calendar:
+                            start_date = calendar.last().date.strftime('%Y%m%d')
+                        else:
+                            start_date = '20200101'  # 默认起始日期
+                    
+                    end_date = datetime.now().strftime('%Y%m%d')
+                    
+                    # 获取新数据
+                    df = self.fetch_daily_data(code.ts_code, start_date, end_date)
+                    if df is not None and not df.empty:
+                        # 转换数据类型
+                        df['trade_date'] = pd.to_datetime(df['trade_date'])
+                        
+                        # 保存新数据
+                        for _, row in df.iterrows():
+                            StockDailyData.objects.create(
+                                stock=code,
+                                trade_date=row['trade_date'],
+                                open=row['open'],
+                                high=row['high'],
+                                low=row['low'],
+                                close=row['close'],
+                                volume=row['vol'],
+                                amount=row['amount'],
+                                up_limit=row['up_limit'],
+                                down_limit=row['down_limit']
+                            )
+                        
+                        # 检查并删除旧数据
+                        old_records = StockDailyData.objects.filter(
+                            stock=code
+                        ).order_by('-trade_date')[1000:]
+                        if old_records.exists():
+                            old_records.delete()
+                    
+                    print(f"股票 {code.name} ({code.ts_code}) 数据更新完成")
+                    
+        except Exception as e:
+            print(f"更新日线数据失败：{str(e)}")
+            raise
 
     def fetch_trading_calendar(self, start_date=None, end_date=None):
         """获取交易日历数据
@@ -160,3 +218,184 @@ class StockDataFetcher:
         except Exception as e:
             print(f"更新交易日历失败：{str(e)}")
             return False
+
+    def fetch_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
+        """获取所有股票的日线数据
+        
+        Args:
+            trade_date (str): 交易日期（YYYYMMDD格式）
+            start_date (str): 开始日期（YYYYMMDD格式）
+            end_date (str): 结束日期（YYYYMMDD格式）
+        
+        Returns:
+            DataFrame: 包含所有股票数据的DataFrame
+        """
+        try:
+            # 验证日期是否为交易日
+            if trade_date:
+                date = datetime.strptime(trade_date, '%Y%m%d').date()
+                is_trading = TradingCalendar.objects.filter(
+                    date=date,
+                    is_trading_day=True
+                ).exists()
+                if not is_trading:
+                    print(f"{trade_date} 不是交易日")
+                    return None
+                
+                # 获取单日数据
+                df_daily = self.pro.daily(
+                    trade_date=trade_date,
+                    fields='ts_code,trade_date,open,high,low,close,vol,amount'
+                )
+                df_limit = self.pro.stk_limit(
+                    trade_date=trade_date,
+                    fields='ts_code,trade_date,up_limit,down_limit'
+                )
+            else:
+                # 获取日期范围内的数据
+                df_daily = self.pro.daily(
+                    start_date=start_date,
+                    end_date=end_date,
+                    fields='ts_code,trade_date,open,high,low,close,vol,amount'
+                )
+                df_limit = self.pro.stk_limit(
+                    start_date=start_date,
+                    end_date=end_date,
+                    fields='ts_code,trade_date,up_limit,down_limit'
+                )
+            
+            # 合并数据
+            if not df_daily.empty and not df_limit.empty:
+                df = pd.merge(
+                    df_daily,
+                    df_limit,
+                    on=['ts_code', 'trade_date'],
+                    how='inner'
+                )
+                return df
+            return None
+        except Exception as e:
+            print(f"获取股票数据失败：{str(e)}")
+            return None
+
+    def cleanup_old_data(self):
+        """清理旧数据
+        
+        保留最近500个交易日的数据，删除更早的数据
+        """
+        try:
+            with transaction.atomic():
+                # 获取最近500个交易日
+                trading_days = TradingCalendar.objects.filter(
+                    is_trading_day=True
+                ).order_by('-date')[:500]
+                
+                if trading_days:
+                    cutoff_date = trading_days.last().date
+                    # 删除早于截止日期的数据
+                    deleted_count = StockDailyData.objects.filter(
+                        trade_date__lt=cutoff_date
+                    ).delete()[0]
+                    
+                    return {
+                        'status': 'success',
+                        'message': f'已删除 {deleted_count} 条旧数据（{cutoff_date} 之前）'
+                    }
+                return {
+                    'status': 'skipped',
+                    'message': '未找到足够的交易日历数据'
+                }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'清理旧数据失败：{str(e)}'
+            }
+
+    def update_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
+        """更新所有股票的日线数据
+        
+        Args:
+            trade_date (str): 交易日期（YYYY-MM-DD格式）
+            start_date (str): 开始日期（YYYY-MM-DD格式）
+            end_date (str): 结束日期（YYYY-MM-DD格式）
+        """
+        try:
+            with transaction.atomic():
+                # 转换日期格式
+                if trade_date:
+                    check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
+                    # 检查是否已有数据
+                    existing_data = StockDailyData.objects.filter(
+                        trade_date=check_date
+                    ).exists()
+                    
+                    if existing_data:
+                        return {'status': 'skipped', 'message': f'{trade_date} 的数据已存在'}
+                    
+                    tushare_date = check_date.strftime('%Y%m%d')
+                    df = self.fetch_all_stocks_daily_data(trade_date=tushare_date)
+                else:
+                    check_start = datetime.strptime(start_date, '%Y-%m-%d').date()
+                    check_end = datetime.strptime(end_date, '%Y-%m-%d').date()
+                    
+                    # 检查日期范围内是否已有数据
+                    existing_dates = StockDailyData.objects.filter(
+                        trade_date__range=[check_start, check_end]
+                    ).values_list('trade_date', flat=True).distinct()
+                    
+                    if existing_dates:
+                        existing_dates_str = [d.strftime('%Y-%m-%d') for d in existing_dates]
+                        return {
+                            'status': 'skipped',
+                            'message': f'以下日期的数据已存在: {", ".join(existing_dates_str)}'
+                        }
+                    
+                    tushare_start = check_start.strftime('%Y%m%d')
+                    tushare_end = check_end.strftime('%Y%m%d')
+                    df = self.fetch_all_stocks_daily_data(
+                        start_date=tushare_start,
+                        end_date=tushare_end
+                    )
+                
+                if df is not None and not df.empty:
+                    # 转换数据类型
+                    df['trade_date'] = pd.to_datetime(df['trade_date'])
+                    
+                    # 批量创建数据
+                    bulk_data = []
+                    for _, row in df.iterrows():
+                        stock = Code.objects.get(ts_code=row['ts_code'])
+                        bulk_data.append(
+                            StockDailyData(
+                                stock=stock,
+                                trade_date=row['trade_date'],
+                                open=row['open'],
+                                high=row['high'],
+                                low=row['low'],
+                                close=row['close'],
+                                volume=row['vol'],
+                                amount=row['amount'],
+                                up_limit=row['up_limit'],
+                                down_limit=row['down_limit']
+                            )
+                        )
+                    
+                    # 批量保存数据
+                    StockDailyData.objects.bulk_create(bulk_data)
+                    
+                    # 清理旧数据
+                    cleanup_result = self.cleanup_old_data()
+                    
+                    return {
+                        'status': 'success',
+                        'message': f'数据更新完成，共更新 {len(bulk_data)} 条记录。{cleanup_result["message"]}'
+                    }
+                else:
+                    return {
+                        'status': 'failed',
+                        'message': '没有新数据需要更新'
+                    }
+                
+        except Exception as e:
+            print(f"更新数据失败：{str(e)}")
+            raise

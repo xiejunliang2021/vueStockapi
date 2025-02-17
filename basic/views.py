@@ -10,15 +10,18 @@ from datetime import datetime
 from .utils import StockDataFetcher
 
 class PolicyDetailsListCreateView(generics.ListCreateAPIView):
+    """策略详情列表和创建视图"""
     queryset = PolicyDetails.objects.all()
     serializer_class = PolicyDetailsSerializer
 
 
 class CodeListCreateView(generics.ListCreateAPIView):
+    """股票代码列表和创建视图"""
     queryset = Code.objects.all()
     serializer_class = CodeSerializer
 
 class CodeRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
+    """股票代码详情、更新和删除视图"""
     queryset = Code.objects.all()
     serializer_class = CodeSerializer
     lookup_field = 'ts_code'
@@ -141,6 +144,38 @@ class CheckTradingDayView(generics.GenericAPIView):
             return Response(
                 {'error': '日期格式无效，请使用 YYYY-MM-DD 格式'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+class StockDailyDataUpdateView(APIView):
+    """更新股票日线数据视图"""
+    
+    def post(self, request):
+        trade_date = request.data.get('trade_date')
+        start_date = request.data.get('start_date')
+        end_date = request.data.get('end_date')
+        
+        try:
+            fetcher = StockDataFetcher()
+            
+            if trade_date:
+                result = fetcher.update_all_stocks_daily_data(trade_date=trade_date)
+                return Response({'message': result['message']})
+            elif start_date and end_date:
+                result = fetcher.update_all_stocks_daily_data(
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                return Response({'message': result['message']})
+            else:
+                return Response(
+                    {'error': '请提供 trade_date 或 start_date 和 end_date'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
