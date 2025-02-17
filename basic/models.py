@@ -167,8 +167,18 @@ class StockDailyData(models.Model):
     close = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="收盘价")
     volume = models.BigIntegerField(verbose_name="成交量")
     amount = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="成交额")
-    up_limit = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="涨停价")
-    down_limit = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="跌停价")
+    up_limit = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        verbose_name="涨停价",
+        default=0  # 添加默认值
+    )
+    down_limit = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        verbose_name="跌停价",
+        default=0  # 添加默认值
+    )
 
     class Meta:
         verbose_name = "股票日线数据"
