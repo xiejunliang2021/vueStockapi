@@ -607,6 +607,7 @@ class StockDataFetcher:
             raise
 
     def analyze_stock_pattern(self, trade_date):
+        """分析特定日期的股票涨停回落模式并保存策略"""
         try:
             logger.info(f"开始分析日期 {trade_date} 的股票模式")
             
@@ -631,14 +632,13 @@ class StockDataFetcher:
                 try:
                     with connection.cursor() as cursor:
                         logger.debug("开始执行 SQL 查询")
-                        # 修改 SQL 查询，使用 Oracle 的参数绑定语法
                         sql = """
                             WITH consecutive_ups AS (
                                 SELECT s.STOCK_ID as stock_code
                                 FROM BASIC_STOCKDAILYDATA s
                                 WHERE s.TRADE_DATE IN (
-                                    TO_DATE(:1, 'YYYY-MM-DD'),
-                                    TO_DATE(:2, 'YYYY-MM-DD')
+                                    TO_DATE('{date1}', 'YYYY-MM-DD'),
+                                    TO_DATE('{date2}', 'YYYY-MM-DD')
                                 )
                                 AND s.CLOSE = s.UP_LIMIT
                                 GROUP BY s.STOCK_ID
@@ -648,8 +648,8 @@ class StockDataFetcher:
                                 SELECT s.STOCK_ID
                                 FROM BASIC_STOCKDAILYDATA s
                                 WHERE s.TRADE_DATE IN (
-                                    TO_DATE(:3, 'YYYY-MM-DD'),
-                                    TO_DATE(:4, 'YYYY-MM-DD')
+                                    TO_DATE('{date3}', 'YYYY-MM-DD'),
+                                    TO_DATE('{date4}', 'YYYY-MM-DD')
                                 )
                                 AND s.CLOSE < s.OPEN
                                 GROUP BY s.STOCK_ID
@@ -660,25 +660,22 @@ class StockDataFetcher:
                             JOIN down_days d ON c.stock_code = d.STOCK_ID
                             JOIN BASIC_CODE bc ON c.stock_code = bc.TS_CODE
                             WHERE LOWER(bc.NAME) NOT LIKE '%st%'
-                        """
+                        """.format(
+                            date1=analysis_dates[3],  # 最早的日期
+                            date2=analysis_dates[2],  # 第二天
+                            date3=analysis_dates[1],  # 第三天
+                            date4=analysis_dates[0]   # 最近的日期
+                        )
                         
-                        # 使用列表形式传递参数
-                        params = [
-                            analysis_dates[3],  # 最早的日期
-                            analysis_dates[2],  # 第二天
-                            analysis_dates[1],  # 第三天
-                            analysis_dates[0]   # 最近的日期
-                        ]
-                        
-                        logger.debug(f"SQL 参数: {params}")
-                        cursor.execute(sql, params)
+                        logger.debug(f"SQL 参数: {analysis_dates}")
+                        cursor.execute(sql)
                         
                         down_stocks = [row[0] for row in cursor.fetchall()]
                         logger.info(f"SQL 查询完成，找到 {len(down_stocks)} 只股票")
                         
                 except Exception as e:
                     logger.error(f"SQL 查询出错: {str(e)}")
-                    logger.error(f"SQL 参数: {params}")
+                    logger.error(f"SQL 参数: {analysis_dates}")
                     raise
                 
                 # 修改后续查询代码
