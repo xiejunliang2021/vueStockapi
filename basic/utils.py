@@ -381,6 +381,9 @@ class StockDataFetcher:
     def update_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
         """更新所有股票的日线数据"""
         try:
+            # 定义批处理大小
+            batch_size = 1000
+            
             if trade_date:
                 # 1. 转换日期格式
                 check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
@@ -418,8 +421,7 @@ class StockDataFetcher:
                         print(f"获取数据: {total_records} 条记录")
                         
                         # 5. 批量保存数据
-                        batch_size = 1000
-                        total_saved = 0
+                        daily_saved = 0  # 记录单日保存数量
                         
                         with transaction.atomic():
                             try:
@@ -445,15 +447,16 @@ class StockDataFetcher:
                                         ]
                                         
                                         StockDailyData.objects.bulk_create(bulk_data)
+                                        daily_saved += len(bulk_data)
                                         total_saved += len(bulk_data)
-                                        print(f"进度: {total_saved}/{total_records}")
+                                        print(f"进度: {daily_saved}/{total_records} (总计: {total_saved})")
                                         
                                     except Exception as batch_error:
-                                        print(f"批量处理错误: {str(batch_error)}")
+                                        print(f"{trade_date} 批量错误: {str(batch_error)}")
                                         raise
                             
                             except Exception as tx_error:
-                                print(f"事务错误: {str(tx_error)}")
+                                print(f"{trade_date} 事务错误: {str(tx_error)}")
                                 raise
                             
                         # 6. 清理旧数据
@@ -513,7 +516,6 @@ class StockDataFetcher:
                 print(f"需要获取 {len(dates_to_fetch)} 个日期的数据")
                 
                 # 5. 获取每个交易日的数据
-                all_data = []
                 total_saved = 0
                 
                 for fetch_date in dates_to_fetch:
@@ -525,6 +527,7 @@ class StockDataFetcher:
                         if df is not None and not df.empty:
                             total_records = len(df)
                             print(f"\n{fetch_date} 获取数据: {total_records} 条记录")
+                            daily_saved = 0  # 记录单日保存数量
                             
                             with transaction.atomic():
                                 try:
@@ -550,8 +553,9 @@ class StockDataFetcher:
                                             ]
                                             
                                             StockDailyData.objects.bulk_create(bulk_data)
+                                            daily_saved += len(bulk_data)
                                             total_saved += len(bulk_data)
-                                            print(f"进度: {total_saved}/{total_records}")
+                                            print(f"进度: {daily_saved}/{total_records} (总计: {total_saved})")
                                             
                                         except Exception as batch_error:
                                             print(f"{fetch_date} 批量错误: {str(batch_error)}")
