@@ -609,117 +609,155 @@ class StockDataFetcher:
     def analyze_stock_pattern(self, trade_date):
         """分析特定日期的股票涨停回落模式并保存策略"""
         try:
-            # 直接获取交易日历数据，不使用缓存
-            check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
-            trading_days = list(TradingCalendar.objects
-                .filter(date__lte=check_date, is_trading_day=True)
-                .order_by('-date')
-                .values_list('date', flat=True)[:4])
+            logger.info(f"开始分析日期 {trade_date} 的股票模式")
             
-            if len(trading_days) < 4:
-                return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
-            
-            # 直接使用日期对象，不需要额外的格式化
-            analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days]
-            
-            # 修改 SQL 查询
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    WITH consecutive_ups AS (
-                        SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
-                        FROM BASIC_STOCKDAILYDATA s
-                        WHERE s.TRADE_DATE IN (
-                            TO_DATE(:1, 'YYYY-MM-DD'),
-                            TO_DATE(:2, 'YYYY-MM-DD')
-                        )
-                        AND s.CLOSE = s.UP_LIMIT
-                        GROUP BY s.STOCK_ID
-                        HAVING COUNT(*) = 2
-                    )
-                    SELECT DISTINCT s.STOCK_ID
-                    FROM consecutive_ups c
-                    JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
-                    WHERE s.TRADE_DATE IN (
-                        TO_DATE(:3, 'YYYY-MM-DD'),
-                        TO_DATE(:4, 'YYYY-MM-DD')
-                    )
-                    AND s.CLOSE < s.OPEN
-                    GROUP BY s.STOCK_ID
-                    HAVING COUNT(*) = 2
-                """, analysis_dates)
+            # 直接获取交易日历数据
+            try:
+                check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
+                logger.debug(f"解析输入日期成功: {check_date}")
                 
-                down_stocks = [row[0] for row in cursor.fetchall()]
-            
-            # 修改后续查询代码
-            result_stocks = []
-            stock_chunks = [down_stocks[i:i+100] for i in range(0, len(down_stocks), 100)]
-            
-            for stock_chunk in stock_chunks:
-                history_data = (StockDailyData.objects
-                    .filter(stock_id__in=stock_chunk)
-                    .filter(trade_date__lt=datetime.strptime(analysis_dates[0], '%Y-%m-%d').date())
-                    .exclude(close=F('up_limit'))
-                    .order_by('-trade_date')
-                    .select_related('stock'))
+                trading_days = list(TradingCalendar.objects
+                    .filter(date__lte=check_date, is_trading_day=True)
+                    .order_by('-date')
+                    .values_list('date', flat=True)[:4])
                 
-                for stock_id in stock_chunk:
-                    stock_history = history_data.filter(stock_id=stock_id)[:3]
-                    if len(stock_history) == 3:
-                        # 计算关键价格点位
-                        max_high = max(d.high for d in stock_history)
-                        min_low = min(d.low for d in stock_history)
-                        avg_price = (max_high + min_low) / 2
-                        take_profit = max_high * Decimal('1.075')
-                        
-                        # 获取股票对象
-                        try:
-                            stock_obj = stock_history[0].stock
-                            
-                            # 保存到 PolicyDetails 模型
-                            try:
-                                with transaction.atomic():
-                                    PolicyDetails.objects.create(
-                                        stock=stock_obj,
-                                        date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
-                                        first_buy_point=max_high,
-                                        second_buy_point=avg_price,
-                                        stop_loss_point=min_low,
-                                        take_profit_point=take_profit,
-                                        strategy_type='龙回头',
-                                        signal_strength=Decimal('0.85'),
-                                        current_status='L'
-                                    )
-                                    
-                                    # 添加到结果列表
-                                    result_stocks.append({
-                                        'stock': stock_obj.ts_code,
-                                        'pattern_dates': analysis_dates,
-                                        'history_dates': [d.trade_date for d in stock_history],
-                                        'max_high': float(max_high),
-                                        'min_low': float(min_low),
-                                        'avg_price': float(avg_price),
-                                        'take_profit': float(take_profit)
-                                    })
-                            except IntegrityError:
-                                logger.warning(f"股票 {stock_obj.ts_code} 在 {trade_date} 的策略记录已存在")
-                                continue
-                            except Exception as e:
-                                logger.error(f"保存策略记录时出错: {str(e)}")
-                                continue
-                            
-                        except Exception as e:
-                            logger.error(f"获取股票信息时出错: {str(e)}")
+                logger.debug(f"获取到的交易日数据: {trading_days}")
+                
+                if len(trading_days) < 4:
+                    logger.warning(f"交易日数据不足，仅获取到 {len(trading_days)} 天")
+                    return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
+                
+                # 格式化日期
+                analysis_dates = []
+                for d in trading_days:
+                    try:
+                        if d is None:
+                            logger.error(f"遇到空日期值")
                             continue
-            
-            saved_count = len(result_stocks)
-            logger.info(f"分析完成: 找到并保存了 {saved_count} 只符合条件的股票策略")
-            
-            return {
-                'status': 'success',
-                'message': f'找到并保存了 {saved_count} 只符合条件的股票策略',
-                'data': result_stocks
-            }
+                        formatted_date = d.strftime('%Y-%m-%d')
+                        analysis_dates.append(formatted_date)
+                        logger.debug(f"成功格式化日期: {formatted_date}")
+                    except Exception as e:
+                        logger.error(f"日期格式化错误: {str(e)}, 日期值: {d}, 类型: {type(d)}")
+                        continue
+                
+                if len(analysis_dates) < 4:
+                    logger.error(f"格式化后的日期数量不足: {len(analysis_dates)}")
+                    return {'status': 'failed', 'message': '日期格式化后数据不足'}
+                
+                logger.info(f"分析日期列表: {analysis_dates}")
+                
+                # 执行 SQL 查询
+                try:
+                    with connection.cursor() as cursor:
+                        logger.debug("开始执行 SQL 查询")
+                        cursor.execute("""
+                            WITH consecutive_ups AS (
+                                SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
+                                FROM BASIC_STOCKDAILYDATA s
+                                WHERE s.TRADE_DATE IN (
+                                    TO_DATE(:1, 'YYYY-MM-DD'),
+                                    TO_DATE(:2, 'YYYY-MM-DD')
+                                )
+                                AND s.CLOSE = s.UP_LIMIT
+                                GROUP BY s.STOCK_ID
+                                HAVING COUNT(*) = 2
+                            )
+                            SELECT DISTINCT s.STOCK_ID
+                            FROM consecutive_ups c
+                            JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
+                            WHERE s.TRADE_DATE IN (
+                                TO_DATE(:3, 'YYYY-MM-DD'),
+                                TO_DATE(:4, 'YYYY-MM-DD')
+                            )
+                            AND s.CLOSE < s.OPEN
+                            GROUP BY s.STOCK_ID
+                            HAVING COUNT(*) = 2
+                        """, analysis_dates)
+                        
+                        down_stocks = [row[0] for row in cursor.fetchall()]
+                        logger.info(f"SQL 查询完成，找到 {len(down_stocks)} 只股票")
+                        
+                except Exception as e:
+                    logger.error(f"SQL 查询出错: {str(e)}")
+                    logger.error(f"SQL 参数: {analysis_dates}")
+                    raise
+                
+                # 修改后续查询代码
+                result_stocks = []
+                stock_chunks = [down_stocks[i:i+100] for i in range(0, len(down_stocks), 100)]
+                
+                for stock_chunk in stock_chunks:
+                    history_data = (StockDailyData.objects
+                        .filter(stock_id__in=stock_chunk)
+                        .filter(trade_date__lt=datetime.strptime(analysis_dates[0], '%Y-%m-%d').date())
+                        .exclude(close=F('up_limit'))
+                        .order_by('-trade_date')
+                        .select_related('stock'))
+                    
+                    for stock_id in stock_chunk:
+                        stock_history = history_data.filter(stock_id=stock_id)[:3]
+                        if len(stock_history) == 3:
+                            # 计算关键价格点位
+                            max_high = max(d.high for d in stock_history)
+                            min_low = min(d.low for d in stock_history)
+                            avg_price = (max_high + min_low) / 2
+                            take_profit = max_high * Decimal('1.075')
+                            
+                            # 获取股票对象
+                            try:
+                                stock_obj = stock_history[0].stock
+                                
+                                # 保存到 PolicyDetails 模型
+                                try:
+                                    with transaction.atomic():
+                                        PolicyDetails.objects.create(
+                                            stock=stock_obj,
+                                            date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
+                                            first_buy_point=max_high,
+                                            second_buy_point=avg_price,
+                                            stop_loss_point=min_low,
+                                            take_profit_point=take_profit,
+                                            strategy_type='龙回头',
+                                            signal_strength=Decimal('0.85'),
+                                            current_status='L'
+                                        )
+                                        
+                                        # 添加到结果列表
+                                        result_stocks.append({
+                                            'stock': stock_obj.ts_code,
+                                            'pattern_dates': analysis_dates,
+                                            'history_dates': [d.trade_date for d in stock_history],
+                                            'max_high': float(max_high),
+                                            'min_low': float(min_low),
+                                            'avg_price': float(avg_price),
+                                            'take_profit': float(take_profit)
+                                        })
+                                except IntegrityError:
+                                    logger.warning(f"股票 {stock_obj.ts_code} 在 {trade_date} 的策略记录已存在")
+                                    continue
+                                except Exception as e:
+                                    logger.error(f"保存策略记录时出错: {str(e)}")
+                                    continue
+                                
+                            except Exception as e:
+                                logger.error(f"获取股票信息时出错: {str(e)}")
+                                continue
+                
+                saved_count = len(result_stocks)
+                logger.info(f"分析完成: 找到并保存了 {saved_count} 只符合条件的股票策略")
+                
+                return {
+                    'status': 'success',
+                    'message': f'找到并保存了 {saved_count} 只符合条件的股票策略',
+                    'data': result_stocks
+                }
+                
+            except ValueError as e:
+                logger.error(f"日期解析错误: {str(e)}")
+                return {'status': 'error', 'message': f'日期格式错误: {str(e)}'}
             
         except Exception as e:
             logger.error(f"分析过程出错: {str(e)}")
+            logger.error(f"错误详情: {traceback.format_exc()}")
             return {'status': 'error', 'message': f'分析过程出错: {str(e)}'}
