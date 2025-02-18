@@ -1,6 +1,6 @@
 from rest_framework import generics
 from .models import PolicyDetails, Code, TradingCalendar
-from .serializers import PolicyDetailsSerializer, CodeSerializer, TradingCalendarSerializer
+from .serializers import PolicyDetailsSerializer, CodeSerializer, TradingCalendarSerializer, StockPatternAnalysisSerializer, StockPatternResultSerializer
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,6 +8,7 @@ from rest_framework import status
 from .analysis import ContinuousLimitStrategy
 from datetime import datetime
 from .utils import StockDataFetcher
+from django.core.cache import cache
 
 class PolicyDetailsListCreateView(generics.ListCreateAPIView):
     """策略详情列表和创建视图"""
@@ -237,6 +238,45 @@ class StockDailyDataUpdateView(APIView):
                     'error': str(e)
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class StockPatternAnalysisView(APIView):
+    """股票模式分析视图"""
+    
+    def post(self, request):
+        serializer = StockPatternAnalysisSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'status': 'error', 'message': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        trade_date = serializer.validated_data['trade_date'].strftime('%Y-%m-%d')
+        
+        # 使用缓存检查是否已有分析结果
+        cache_key = f'stock_pattern_{trade_date}'
+        result = cache.get(cache_key)
+        
+        if not result:
+            fetcher = StockDataFetcher()
+            result = fetcher.analyze_stock_pattern(trade_date)
+            if result['status'] == 'success':
+                cache.set(cache_key, result, 3600)  # 缓存1小时
+        
+        if result['status'] == 'success':
+            # 序列化结果数据
+            result_serializer = StockPatternResultSerializer(
+                data=result['data'], 
+                many=True
+            )
+            if result_serializer.is_valid():
+                result['data'] = result_serializer.data
+            
+            return Response(result)
+        else:
+            return Response(
+                result,
+                status=status.HTTP_400_BAD_REQUEST
             )
 
 

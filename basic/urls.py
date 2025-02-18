@@ -3,7 +3,8 @@ from .views import (
     PolicyDetailsListCreateView, CodeListCreateView, 
     CodeRetrieveUpdateDeleteView, ManualStrategyAnalysisView,
     TradingCalendarListCreateView, TradingCalendarDetailView,
-    CheckTradingDayView, StockDailyDataUpdateView
+    CheckTradingDayView, StockDailyDataUpdateView,
+    StockPatternAnalysisView
 )
 
 urlpatterns = [
@@ -25,5 +26,6 @@ urlpatterns = [
     path('update-trading-calendar/', TradingCalendarListCreateView.as_view(), name='update-trading-calendar'),
     # 更新股票日线数据
     path('update-daily-data/', StockDailyDataUpdateView.as_view(), name='update-daily-data'),
+    path('analyze-pattern/', StockPatternAnalysisView.as_view(), name='analyze-pattern'),
 ]
 

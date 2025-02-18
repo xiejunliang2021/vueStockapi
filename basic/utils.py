@@ -1,11 +1,16 @@
 import tushare as ts
-from .models import Code, StockDailyData, TradingCalendar
+from .models import Code, StockDailyData, TradingCalendar, PolicyDetails
 from decouple import config
 from django.db import transaction, connection
 import pandas as pd
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import traceback  # 添加这个导入
+from django.db.models import F, Count
+from django.core.cache import cache
+import logging
+from decimal import Decimal
+from django.db.utils import IntegrityError
 
 
 # 初始化 Tushare
@@ -598,3 +603,113 @@ class StockDataFetcher:
                     'message': '连接中断，但已保存部分数据'
                 }
             raise
+
+    def analyze_stock_pattern(self, trade_date):
+        """分析特定日期的股票涨停回落模式并保存策略"""
+        try:
+            # 使用缓存获取交易日历数据
+            cache_key = f'trading_days_{trade_date}'
+            trading_days = cache.get(cache_key)
+            
+            if not trading_days:
+                check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
+                trading_days = (TradingCalendar.objects
+                    .filter(date__lte=check_date, is_trading_day=True)
+                    .order_by('-date')
+                    .select_related()[:4])
+                cache.set(cache_key, trading_days, 3600)  # 缓存1小时
+            
+            if len(trading_days) < 4:
+                return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
+            
+            analysis_dates = [d.date for d in trading_days]
+            
+            # 使用原生SQL优化查询性能
+            with connection.cursor() as cursor:
+                # 查找连续两天涨停的股票
+                cursor.execute("""
+                    WITH consecutive_ups AS (
+                        SELECT stock, COUNT(*) as up_days
+                        FROM BASIC_STOCKDAILYDATA
+                        WHERE trade_date IN %s
+                        AND close = up_limit
+                        GROUP BY stock
+                        HAVING COUNT(*) = 2
+                    )
+                    SELECT DISTINCT s.stock
+                    FROM consecutive_ups c
+                    JOIN BASIC_STOCKDAILYDATA s ON c.stock = s.stock
+                    WHERE s.trade_date IN %s
+                    AND s.close < s.open
+                    GROUP BY s.stock
+                    HAVING COUNT(*) = 2
+                """, [tuple(analysis_dates[:2]), tuple(analysis_dates[2:])])
+                
+                down_stocks = [row[0] for row in cursor.fetchall()]
+            
+            # 使用批量查询优化
+            result_stocks = []
+            stock_chunks = [down_stocks[i:i+100] for i in range(0, len(down_stocks), 100)]
+            
+            for stock_chunk in stock_chunks:
+                history_data = (StockDailyData.objects
+                    .filter(stock__in=stock_chunk, trade_date__lt=analysis_dates[0])
+                    .exclude(close=F('up_limit'))
+                    .order_by('-trade_date')
+                    .select_related('stock')
+                    .prefetch_related('stock__code'))
+                
+                for stock in stock_chunk:
+                    stock_history = history_data.filter(stock=stock)[:3]
+                    if len(stock_history) == 3:
+                        # 计算关键价格点位
+                        max_high = max(d.high for d in stock_history)
+                        min_low = min(d.low for d in stock_history)
+                        avg_price = (max_high + min_low) / 2
+                        take_profit = max_high * Decimal('1.075')  # 转换为Decimal类型
+                        
+                        # 保存到PolicyDetails模型
+                        try:
+                            with transaction.atomic():
+                                PolicyDetails.objects.create(
+                                    stock=stock_history[0].stock,  # 使用第一条记录的股票对象
+                                    date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
+                                    first_buy_point=max_high,
+                                    second_buy_point=avg_price,
+                                    stop_loss_point=min_low,
+                                    take_profit_point=take_profit,
+                                    strategy_type='龙回头',
+                                    signal_strength=Decimal('0.85'),  # 设置默认信号强度
+                                    current_status='L'  # 设置为进行中状态
+                                )
+                                
+                                # 添加到结果列表
+                                result_stocks.append({
+                                    'stock': stock,
+                                    'pattern_dates': analysis_dates,
+                                    'history_dates': [d.trade_date for d in stock_history],
+                                    'max_high': float(max_high),
+                                    'min_low': float(min_low),
+                                    'avg_price': float(avg_price),
+                                    'take_profit': float(take_profit)
+                                })
+                        except IntegrityError:
+                            # 处理可能的重复记录
+                            logger.warning(f"股票 {stock} 在 {trade_date} 的策略记录已存在")
+                            continue
+                        except Exception as e:
+                            logger.error(f"保存策略记录时出错: {str(e)}")
+                            continue
+            
+            saved_count = len(result_stocks)
+            logger.info(f"分析完成: 找到并保存了 {saved_count} 只符合条件的股票策略")
+            
+            return {
+                'status': 'success',
+                'message': f'找到并保存了 {saved_count} 只符合条件的股票策略',
+                'data': result_stocks
+            }
+            
+        except Exception as e:
+            logger.error(f"分析过程出错: {str(e)}")
+            return {'status': 'error', 'message': f'分析过程出错: {str(e)}'}
