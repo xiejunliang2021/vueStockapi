@@ -615,17 +615,35 @@ class StockDataFetcher:
             
             if not trading_days:
                 check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
-                trading_days = (TradingCalendar.objects
+                trading_days = list(TradingCalendar.objects
                     .filter(date__lte=check_date, is_trading_day=True)
                     .order_by('-date')
-                    .select_related()[:4])
+                    .values('date')[:4])  # 使用 values() 只获取日期字段
+                
+                if not trading_days:
+                    return {'status': 'failed', 'message': '没有找到交易日数据'}
+                    
                 cache.set(cache_key, trading_days, 3600)  # 缓存1小时
             
             if len(trading_days) < 4:
                 return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
             
-            # 确保日期格式正确
-            analysis_dates = [d.date.strftime('%Y-%m-%d') for d in trading_days]
+            # 确保日期格式正确，并处理可能的 None 值
+            analysis_dates = []
+            for day in trading_days:
+                if day and day.get('date'):
+                    try:
+                        if isinstance(day['date'], datetime):
+                            formatted_date = day['date'].strftime('%Y-%m-%d')
+                        else:
+                            formatted_date = day['date'].strftime('%Y-%m-%d')
+                        analysis_dates.append(formatted_date)
+                    except AttributeError as e:
+                        logger.error(f"日期格式化错误: {str(e)}, 日期值: {day['date']}")
+                        continue
+            
+            if len(analysis_dates) < 4:
+                return {'status': 'failed', 'message': '日期格式化后数据不足'}
             
             # 修改 SQL 查询，使用 TO_DATE 函数确保日期格式正确
             with connection.cursor() as cursor:
