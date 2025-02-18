@@ -624,15 +624,20 @@ class StockDataFetcher:
             if len(trading_days) < 4:
                 return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
             
-            analysis_dates = [d.date for d in trading_days]
+            # 确保日期格式正确
+            analysis_dates = [d.date.strftime('%Y-%m-%d') for d in trading_days]
             
-            # 修改 SQL 查询，使用正确的表名和字段名
+            # 修改 SQL 查询，使用 TO_DATE 函数确保日期格式正确
             with connection.cursor() as cursor:
                 cursor.execute("""
                     WITH consecutive_ups AS (
                         SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
                         FROM BASIC_STOCKDAILYDATA s
-                        WHERE s.TRADE_DATE IN %s
+                        WHERE s.TRADE_DATE IN (
+                            SELECT TO_DATE(:1, 'YYYY-MM-DD') FROM DUAL
+                            UNION ALL
+                            SELECT TO_DATE(:2, 'YYYY-MM-DD') FROM DUAL
+                        )
                         AND s.CLOSE = s.UP_LIMIT
                         GROUP BY s.STOCK_ID
                         HAVING COUNT(*) = 2
@@ -640,11 +645,16 @@ class StockDataFetcher:
                     SELECT DISTINCT s.STOCK_ID
                     FROM consecutive_ups c
                     JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
-                    WHERE s.TRADE_DATE IN %s
+                    WHERE s.TRADE_DATE IN (
+                        SELECT TO_DATE(:3, 'YYYY-MM-DD') FROM DUAL
+                        UNION ALL
+                        SELECT TO_DATE(:4, 'YYYY-MM-DD') FROM DUAL
+                    )
                     AND s.CLOSE < s.OPEN
                     GROUP BY s.STOCK_ID
                     HAVING COUNT(*) = 2
-                """, [tuple(analysis_dates[:2]), tuple(analysis_dates[2:])])
+                """, [analysis_dates[0], analysis_dates[1], 
+                     analysis_dates[2], analysis_dates[3]])
                 
                 down_stocks = [row[0] for row in cursor.fetchall()]
             
@@ -654,7 +664,8 @@ class StockDataFetcher:
             
             for stock_chunk in stock_chunks:
                 history_data = (StockDailyData.objects
-                    .filter(stock_id__in=stock_chunk, trade_date__lt=analysis_dates[0])
+                    .filter(stock_id__in=stock_chunk)
+                    .filter(trade_date__lt=datetime.strptime(analysis_dates[0], '%Y-%m-%d').date())
                     .exclude(close=F('up_limit'))
                     .order_by('-trade_date')
                     .select_related('stock'))
