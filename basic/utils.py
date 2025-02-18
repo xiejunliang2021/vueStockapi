@@ -609,52 +609,28 @@ class StockDataFetcher:
     def analyze_stock_pattern(self, trade_date):
         """分析特定日期的股票涨停回落模式并保存策略"""
         try:
-            # 使用缓存获取交易日历数据
-            cache_key = f'trading_days_{trade_date}'
-            trading_days = cache.get(cache_key)
-            
-            if not trading_days:
-                check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
-                trading_days = list(TradingCalendar.objects
-                    .filter(date__lte=check_date, is_trading_day=True)
-                    .order_by('-date')
-                    .values('date')[:4])  # 使用 values() 只获取日期字段
-                
-                if not trading_days:
-                    return {'status': 'failed', 'message': '没有找到交易日数据'}
-                    
-                cache.set(cache_key, trading_days, 3600)  # 缓存1小时
+            # 直接获取交易日历数据，不使用缓存
+            check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
+            trading_days = list(TradingCalendar.objects
+                .filter(date__lte=check_date, is_trading_day=True)
+                .order_by('-date')
+                .values_list('date', flat=True)[:4])
             
             if len(trading_days) < 4:
                 return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
             
-            # 确保日期格式正确，并处理可能的 None 值
-            analysis_dates = []
-            for day in trading_days:
-                if day and day.get('date'):
-                    try:
-                        if isinstance(day['date'], datetime):
-                            formatted_date = day['date'].strftime('%Y-%m-%d')
-                        else:
-                            formatted_date = day['date'].strftime('%Y-%m-%d')
-                        analysis_dates.append(formatted_date)
-                    except AttributeError as e:
-                        logger.error(f"日期格式化错误: {str(e)}, 日期值: {day['date']}")
-                        continue
+            # 直接使用日期对象，不需要额外的格式化
+            analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days]
             
-            if len(analysis_dates) < 4:
-                return {'status': 'failed', 'message': '日期格式化后数据不足'}
-            
-            # 修改 SQL 查询，使用 TO_DATE 函数确保日期格式正确
+            # 修改 SQL 查询
             with connection.cursor() as cursor:
                 cursor.execute("""
                     WITH consecutive_ups AS (
                         SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
                         FROM BASIC_STOCKDAILYDATA s
                         WHERE s.TRADE_DATE IN (
-                            SELECT TO_DATE(:1, 'YYYY-MM-DD') FROM DUAL
-                            UNION ALL
-                            SELECT TO_DATE(:2, 'YYYY-MM-DD') FROM DUAL
+                            TO_DATE(:1, 'YYYY-MM-DD'),
+                            TO_DATE(:2, 'YYYY-MM-DD')
                         )
                         AND s.CLOSE = s.UP_LIMIT
                         GROUP BY s.STOCK_ID
@@ -664,15 +640,13 @@ class StockDataFetcher:
                     FROM consecutive_ups c
                     JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
                     WHERE s.TRADE_DATE IN (
-                        SELECT TO_DATE(:3, 'YYYY-MM-DD') FROM DUAL
-                        UNION ALL
-                        SELECT TO_DATE(:4, 'YYYY-MM-DD') FROM DUAL
+                        TO_DATE(:3, 'YYYY-MM-DD'),
+                        TO_DATE(:4, 'YYYY-MM-DD')
                     )
                     AND s.CLOSE < s.OPEN
                     GROUP BY s.STOCK_ID
                     HAVING COUNT(*) = 2
-                """, [analysis_dates[0], analysis_dates[1], 
-                     analysis_dates[2], analysis_dates[3]])
+                """, analysis_dates)
                 
                 down_stocks = [row[0] for row in cursor.fetchall()]
             
