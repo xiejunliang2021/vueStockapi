@@ -607,11 +607,9 @@ class StockDataFetcher:
             raise
 
     def analyze_stock_pattern(self, trade_date):
-        """分析特定日期的股票涨停回落模式并保存策略"""
         try:
             logger.info(f"开始分析日期 {trade_date} 的股票模式")
             
-            # 直接获取交易日历数据
             try:
                 check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
                 logger.debug(f"解析输入日期成功: {check_date}")
@@ -627,37 +625,20 @@ class StockDataFetcher:
                     logger.warning(f"交易日数据不足，仅获取到 {len(trading_days)} 天")
                     return {'status': 'failed', 'message': '没有足够的交易日数据进行分析'}
                 
-                # 格式化日期
-                analysis_dates = []
-                for d in trading_days:
-                    try:
-                        if d is None:
-                            logger.error(f"遇到空日期值")
-                            continue
-                        formatted_date = d.strftime('%Y-%m-%d')
-                        analysis_dates.append(formatted_date)
-                        logger.debug(f"成功格式化日期: {formatted_date}")
-                    except Exception as e:
-                        logger.error(f"日期格式化错误: {str(e)}, 日期值: {d}, 类型: {type(d)}")
-                        continue
-                
-                if len(analysis_dates) < 4:
-                    logger.error(f"格式化后的日期数量不足: {len(analysis_dates)}")
-                    return {'status': 'failed', 'message': '日期格式化后数据不足'}
-                
+                analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days]
                 logger.info(f"分析日期列表: {analysis_dates}")
                 
-                # 修改 SQL 查询，使用命名参数
                 try:
                     with connection.cursor() as cursor:
                         logger.debug("开始执行 SQL 查询")
+                        # 修改 SQL 查询，使用 Oracle 的参数绑定语法
                         sql = """
                             WITH consecutive_ups AS (
                                 SELECT s.STOCK_ID as stock_code
                                 FROM BASIC_STOCKDAILYDATA s
                                 WHERE s.TRADE_DATE IN (
-                                    TO_DATE(:date1, 'YYYY-MM-DD'),
-                                    TO_DATE(:date2, 'YYYY-MM-DD')
+                                    TO_DATE(:1, 'YYYY-MM-DD'),
+                                    TO_DATE(:2, 'YYYY-MM-DD')
                                 )
                                 AND s.CLOSE = s.UP_LIMIT
                                 GROUP BY s.STOCK_ID
@@ -667,8 +648,8 @@ class StockDataFetcher:
                                 SELECT s.STOCK_ID
                                 FROM BASIC_STOCKDAILYDATA s
                                 WHERE s.TRADE_DATE IN (
-                                    TO_DATE(:date3, 'YYYY-MM-DD'),
-                                    TO_DATE(:date4, 'YYYY-MM-DD')
+                                    TO_DATE(:3, 'YYYY-MM-DD'),
+                                    TO_DATE(:4, 'YYYY-MM-DD')
                                 )
                                 AND s.CLOSE < s.OPEN
                                 GROUP BY s.STOCK_ID
@@ -681,12 +662,13 @@ class StockDataFetcher:
                             WHERE LOWER(bc.NAME) NOT LIKE '%st%'
                         """
                         
-                        params = {
-                            'date1': analysis_dates[3],  # 最早的日期
-                            'date2': analysis_dates[2],  # 第二天
-                            'date3': analysis_dates[1],  # 第三天
-                            'date4': analysis_dates[0]   # 最近的日期
-                        }
+                        # 使用列表形式传递参数
+                        params = [
+                            analysis_dates[3],  # 最早的日期
+                            analysis_dates[2],  # 第二天
+                            analysis_dates[1],  # 第三天
+                            analysis_dates[0]   # 最近的日期
+                        ]
                         
                         logger.debug(f"SQL 参数: {params}")
                         cursor.execute(sql, params)
