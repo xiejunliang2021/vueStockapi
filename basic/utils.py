@@ -449,33 +449,12 @@ class StockDataFetcher:
                                         print(f"已保存 {total_saved}/{total_records} 条记录")
                                         
                                     except Exception as batch_error:
-                                        error_context = {
-                                            'batch_start': start_idx,
-                                            'batch_end': end_idx,
-                                            'current_records': total_saved,
-                                            'error_traceback': traceback.format_exc(),
-                                            'last_records': df.iloc[max(0, start_idx-5):start_idx].to_dict('records'),
-                                            'error_records': df.iloc[start_idx:min(start_idx+5, end_idx)].to_dict('records')
-                                        }
-                                        print("\n=== 批量处理错误 ===")
-                                        print(f"错误类型: {type(batch_error).__name__}")
-                                        print(f"错误信息: {str(batch_error)}")
-                                        print("\n最后5条成功记录:")
-                                        for record in error_context['last_records']:
-                                            print(record)
-                                        print("\n出错批次的前5条记录:")
-                                        for record in error_context['error_records']:
-                                            print(record)
-                                        # print("\n详细错误堆栈:")
-                                        print(error_context['error_traceback'])
-                                        raise Exception(f"批量处理错误: {str(batch_error)}")
+                                        print(f"\n批量处理错误: {str(batch_error)}")
+                                        print(f"处理进度: {total_saved}/{total_records}")
+                                        raise
                             
                             except Exception as tx_error:
-                                print("\n=== 事务处理错误 ===")
-                                print(f"错误类型: {type(tx_error).__name__}")
-                                print(f"错误信息: {str(tx_error)}")
-                                # print("\n详细错误堆栈:")
-                                print(traceback.format_exc())
+                                print(f"\n事务处理错误: {str(tx_error)}")
                                 raise
                             
                         # 6. 清理旧数据
@@ -492,7 +471,6 @@ class StockDataFetcher:
                         error_msg = "\n=== 数据保存错误 ===\n"
                         error_msg += f"错误类型: {type(save_error).__name__}\n"
                         error_msg += f"错误信息: {str(save_error)}\n"
-                        # error_msg += "\n详细错误堆栈:\n"
                         error_msg += traceback.format_exc()
                         print(error_msg)
                         raise Exception(error_msg)
@@ -586,30 +564,16 @@ class StockDataFetcher:
                                             print(f"已保存 {total_saved} 条记录")
                                             
                                         except Exception as batch_error:
-                                            error_context = {
-                                                'date': fetch_date,
-                                                'batch_start': start_idx,
-                                                'batch_end': end_idx,
-                                                'error_traceback': traceback.format_exc()
-                                            }
-                                            print(f"\n=== {fetch_date} 批量处理错误 ===")
-                                            print(f"错误类型: {type(batch_error).__name__}")
-                                            print(f"错误信息: {str(batch_error)}")
-                                            print(error_context['error_traceback'])
+                                            print(f"\n{fetch_date} 批量处理错误: {str(batch_error)}")
+                                            print(f"当前进度: {total_saved}")
                                             raise
                                             
                                 except Exception as tx_error:
-                                    print(f"\n=== {fetch_date} 事务处理错误 ===")
-                                    print(f"错误类型: {type(tx_error).__name__}")
-                                    print(f"错误信息: {str(tx_error)}")
-                                    print(traceback.format_exc())
+                                    print(f"\n{fetch_date} 事务错误: {str(tx_error)}")
                                     raise
                         
                     except Exception as date_error:
-                        print(f"\n=== 处理 {fetch_date} 时出错 ===")
-                        print(f"错误类型: {type(date_error).__name__}")
-                        print(f"错误信息: {str(date_error)}")
-                        print(traceback.format_exc())
+                        print(f"\n处理 {fetch_date} 失败: {str(date_error)}")
                         continue  # 继续处理下一个日期
                 
                 # 6. 清理旧数据
@@ -631,9 +595,5 @@ class StockDataFetcher:
                     }
             
         except Exception as e:
-            error_msg = "\n=== 更新处理错误 ===\n"
-            error_msg += f"错误类型: {type(e).__name__}\n"
-            error_msg += f"错误信息: {str(e)}\n"
-            error_msg += traceback.format_exc()
-            print(error_msg)
-            raise Exception(error_msg)
+            print(f"\n更新数据失败: {str(e)}")
+            raise
