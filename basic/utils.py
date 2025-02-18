@@ -626,68 +626,67 @@ class StockDataFetcher:
             
             analysis_dates = [d.date for d in trading_days]
             
-            # 使用原生SQL优化查询性能
+            # 修改 SQL 查询，使用正确的表名和字段名
             with connection.cursor() as cursor:
-                # 查找连续两天涨停的股票
                 cursor.execute("""
                     WITH consecutive_ups AS (
-                        SELECT stock, COUNT(*) as up_days
+                        SELECT BASIC_STOCKDAILYDATA.TS_CODE as stock_code, COUNT(*) as up_days
                         FROM BASIC_STOCKDAILYDATA
-                        WHERE trade_date IN %s
-                        AND close = up_limit
-                        GROUP BY stock
+                        WHERE TRADE_DATE IN %s
+                        AND CLOSE = UP_LIMIT
+                        GROUP BY BASIC_STOCKDAILYDATA.TS_CODE
                         HAVING COUNT(*) = 2
                     )
-                    SELECT DISTINCT s.stock
+                    SELECT DISTINCT s.TS_CODE
                     FROM consecutive_ups c
-                    JOIN BASIC_STOCKDAILYDATA s ON c.stock = s.stock
-                    WHERE s.trade_date IN %s
-                    AND s.close < s.open
-                    GROUP BY s.stock
+                    JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.TS_CODE
+                    WHERE s.TRADE_DATE IN %s
+                    AND s.CLOSE < s.OPEN
+                    GROUP BY s.TS_CODE
                     HAVING COUNT(*) = 2
                 """, [tuple(analysis_dates[:2]), tuple(analysis_dates[2:])])
                 
                 down_stocks = [row[0] for row in cursor.fetchall()]
             
-            # 使用批量查询优化
+            # 修改后续查询代码
             result_stocks = []
             stock_chunks = [down_stocks[i:i+100] for i in range(0, len(down_stocks), 100)]
             
             for stock_chunk in stock_chunks:
                 history_data = (StockDailyData.objects
-                    .filter(stock__in=stock_chunk, trade_date__lt=analysis_dates[0])
+                    .filter(ts_code__in=stock_chunk, trade_date__lt=analysis_dates[0])
                     .exclude(close=F('up_limit'))
                     .order_by('-trade_date')
-                    .select_related('stock')
-                    .prefetch_related('stock__code'))
+                    .select_related('code'))  # 修改为 code，因为这是外键关系
                 
-                for stock in stock_chunk:
-                    stock_history = history_data.filter(stock=stock)[:3]
+                for stock_code in stock_chunk:
+                    stock_history = history_data.filter(ts_code=stock_code)[:3]
                     if len(stock_history) == 3:
                         # 计算关键价格点位
                         max_high = max(d.high for d in stock_history)
                         min_low = min(d.low for d in stock_history)
                         avg_price = (max_high + min_low) / 2
-                        take_profit = max_high * Decimal('1.075')  # 转换为Decimal类型
+                        take_profit = max_high * Decimal('1.075')
                         
-                        # 保存到PolicyDetails模型
+                        # 保存到 PolicyDetails 模型
                         try:
                             with transaction.atomic():
+                                stock_obj = Code.objects.get(ts_code=stock_code)
                                 PolicyDetails.objects.create(
-                                    stock=stock_history[0].stock,  # 使用第一条记录的股票对象
+                                    stock=stock_obj,
                                     date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
                                     first_buy_point=max_high,
                                     second_buy_point=avg_price,
                                     stop_loss_point=min_low,
                                     take_profit_point=take_profit,
                                     strategy_type='龙回头',
-                                    signal_strength=Decimal('0.85'),  # 设置默认信号强度
-                                    current_status='L'  # 设置为进行中状态
+                                    signal_strength=Decimal('0.85'),
+                                    current_status='L'
                                 )
                                 
                                 # 添加到结果列表
                                 result_stocks.append({
-                                    'stock': stock,
+                                    'stock': stock_code,
                                     'pattern_dates': analysis_dates,
                                     'history_dates': [d.trade_date for d in stock_history],
                                     'max_high': float(max_high),
@@ -695,9 +694,11 @@ class StockDataFetcher:
                                     'avg_price': float(avg_price),
                                     'take_profit': float(take_profit)
                                 })
+                        except Code.DoesNotExist:
+                            logger.warning(f"股票代码 {stock_code} 在Code表中不存在")
+                            continue
                         except IntegrityError:
-                            # 处理可能的重复记录
-                            logger.warning(f"股票 {stock} 在 {trade_date} 的策略记录已存在")
+                            logger.warning(f"股票 {stock_code} 在 {trade_date} 的策略记录已存在")
                             continue
                         except Exception as e:
                             logger.error(f"保存策略记录时出错: {str(e)}")
