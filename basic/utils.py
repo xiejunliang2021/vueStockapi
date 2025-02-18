@@ -653,7 +653,7 @@ class StockDataFetcher:
                         logger.debug("开始执行 SQL 查询")
                         sql = """
                             WITH consecutive_ups AS (
-                                SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
+                                SELECT s.STOCK_ID as stock_code
                                 FROM BASIC_STOCKDAILYDATA s
                                 WHERE s.TRADE_DATE IN (
                                     TO_DATE(:date1, 'YYYY-MM-DD'),
@@ -662,24 +662,30 @@ class StockDataFetcher:
                                 AND s.CLOSE = s.UP_LIMIT
                                 GROUP BY s.STOCK_ID
                                 HAVING COUNT(*) = 2
+                            ),
+                            down_days AS (
+                                SELECT s.STOCK_ID
+                                FROM BASIC_STOCKDAILYDATA s
+                                WHERE s.TRADE_DATE IN (
+                                    TO_DATE(:date3, 'YYYY-MM-DD'),
+                                    TO_DATE(:date4, 'YYYY-MM-DD')
+                                )
+                                AND s.CLOSE < s.OPEN
+                                GROUP BY s.STOCK_ID
+                                HAVING COUNT(*) = 2
                             )
-                            SELECT DISTINCT s.STOCK_ID
+                            SELECT DISTINCT c.stock_code
                             FROM consecutive_ups c
-                            JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
-                            WHERE s.TRADE_DATE IN (
-                                TO_DATE(:date3, 'YYYY-MM-DD'),
-                                TO_DATE(:date4, 'YYYY-MM-DD')
-                            )
-                            AND s.CLOSE < s.OPEN
-                            GROUP BY s.STOCK_ID
-                            HAVING COUNT(*) = 2
+                            JOIN down_days d ON c.stock_code = d.STOCK_ID
+                            JOIN BASIC_CODE bc ON c.stock_code = bc.TS_CODE
+                            WHERE LOWER(bc.NAME) NOT LIKE '%st%'
                         """
                         
                         params = {
-                            'date1': analysis_dates[0],
-                            'date2': analysis_dates[1],
-                            'date3': analysis_dates[2],
-                            'date4': analysis_dates[3]
+                            'date1': analysis_dates[3],  # 最早的日期
+                            'date2': analysis_dates[2],  # 第二天
+                            'date3': analysis_dates[1],  # 第三天
+                            'date4': analysis_dates[0]   # 最近的日期
                         }
                         
                         logger.debug(f"SQL 参数: {params}")
