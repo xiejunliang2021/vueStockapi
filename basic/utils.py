@@ -673,84 +673,74 @@ class StockDataFetcher:
                         down_stocks = [row[0] for row in cursor.fetchall()]
                         logger.info(f"SQL 查询完成，找到 {len(down_stocks)} 只股票")
                         
+                        # 分批处理股票数据
+                        result_stocks = []
+                        for i in range(0, len(down_stocks), 50):
+                            stock_chunk = down_stocks[i:i+50]
+                            
+                            # 获取历史数据
+                            history_data = (StockDailyData.objects
+                                .filter(stock_id__in=stock_chunk)
+                                .filter(trade_date__lt=datetime.strptime(analysis_dates[0], '%Y-%m-%d').date())
+                                .exclude(close=F('up_limit'))
+                                .order_by('-trade_date')
+                                .select_related('stock'))
+                            
+                            for stock_id in stock_chunk:
+                                stock_history = history_data.filter(stock_id=stock_id)[:3]
+                                if len(stock_history) == 3:
+                                    # 计算关键价格点位
+                                    max_high = max(d.high for d in stock_history)
+                                    min_low = min(d.low for d in stock_history)
+                                    avg_price = (max_high + min_low) / 2
+                                    take_profit = max_high * Decimal('1.075')
+                                    
+                                    # 获取股票对象
+                                    try:
+                                        stock_obj = stock_history[0].stock
+                                        
+                                        # 保存到 PolicyDetails 模型
+                                        try:
+                                            with transaction.atomic():
+                                                PolicyDetails.objects.create(
+                                                    stock=stock_obj,
+                                                    date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
+                                                    first_buy_point=max_high,
+                                                    second_buy_point=avg_price,
+                                                    stop_loss_point=min_low,
+                                                    take_profit_point=take_profit,
+                                                    strategy_type='龙回头',
+                                                    signal_strength=Decimal('0.85'),
+                                                    current_status='L'
+                                                )
+                                                
+                                                result_stocks.append({
+                                                    'stock': stock_obj.ts_code,
+                                                    'pattern_dates': analysis_dates,
+                                                    'history_dates': [d.trade_date for d in stock_history],
+                                                    'max_high': float(max_high),
+                                                    'min_low': float(min_low),
+                                                    'avg_price': float(avg_price)
+                                                })
+                                                
+                                        except Exception as e:
+                                            logger.error(f"保存策略详情时出错: {str(e)}")
+                                            continue
+                                        
+                                    except Exception as e:
+                                        logger.error(f"获取股票对象时出错: {str(e)}")
+                                        continue
+                        
+                        return {'status': 'success', 'data': result_stocks}
+                        
                 except Exception as e:
                     logger.error(f"SQL 查询出错: {str(e)}")
                     logger.error(f"SQL 参数: {analysis_dates}")
                     raise
                 
-                # 修改后续查询代码
-                result_stocks = []
-                stock_chunks = [down_stocks[i:i+100] for i in range(0, len(down_stocks), 100)]
-                
-                for stock_chunk in stock_chunks:
-                    history_data = (StockDailyData.objects
-                        .filter(stock_id__in=stock_chunk)
-                        .filter(trade_date__lt=datetime.strptime(analysis_dates[0], '%Y-%m-%d').date())
-                        .exclude(close=F('up_limit'))
-                        .order_by('-trade_date')
-                        .select_related('stock'))
-                    
-                    for stock_id in stock_chunk:
-                        stock_history = history_data.filter(stock_id=stock_id)[:3]
-                        if len(stock_history) == 3:
-                            # 计算关键价格点位
-                            max_high = max(d.high for d in stock_history)
-                            min_low = min(d.low for d in stock_history)
-                            avg_price = (max_high + min_low) / 2
-                            take_profit = max_high * Decimal('1.075')
-                            
-                            # 获取股票对象
-                            try:
-                                stock_obj = stock_history[0].stock
-                                
-                                # 保存到 PolicyDetails 模型
-                                try:
-                                    with transaction.atomic():
-                                        PolicyDetails.objects.create(
-                                            stock=stock_obj,
-                                            date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
-                                            first_buy_point=max_high,
-                                            second_buy_point=avg_price,
-                                            stop_loss_point=min_low,
-                                            take_profit_point=take_profit,
-                                            strategy_type='龙回头',
-                                            signal_strength=Decimal('0.85'),
-                                            current_status='L'
-                                        )
-                                        
-                                        # 添加到结果列表
-                                        result_stocks.append({
-                                            'stock': stock_obj.ts_code,
-                                            'pattern_dates': analysis_dates,
-                                            'history_dates': [d.trade_date for d in stock_history],
-                                            'max_high': float(max_high),
-                                            'min_low': float(min_low),
-                                            'avg_price': float(avg_price),
-                                            'take_profit': float(take_profit)
-                                        })
-                                except IntegrityError:
-                                    logger.warning(f"股票 {stock_obj.ts_code} 在 {trade_date} 的策略记录已存在")
-                                    continue
-                                except Exception as e:
-                                    logger.error(f"保存策略记录时出错: {str(e)}")
-                                    continue
-                                
-                            except Exception as e:
-                                logger.error(f"获取股票信息时出错: {str(e)}")
-                                continue
-                
-                saved_count = len(result_stocks)
-                logger.info(f"分析完成: 找到并保存了 {saved_count} 只符合条件的股票策略")
-                
-                return {
-                    'status': 'success',
-                    'message': f'找到并保存了 {saved_count} 只符合条件的股票策略',
-                    'data': result_stocks
-                }
-                
-            except ValueError as e:
-                logger.error(f"日期解析错误: {str(e)}")
-                return {'status': 'error', 'message': f'日期格式错误: {str(e)}'}
+            except Exception as e:
+                logger.error(f"日期处理出错: {str(e)}")
+                return {'status': 'error', 'message': f'日期处理出错: {str(e)}'}
             
         except Exception as e:
             logger.error(f"分析过程出错: {str(e)}")
