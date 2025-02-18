@@ -630,19 +630,19 @@ class StockDataFetcher:
             with connection.cursor() as cursor:
                 cursor.execute("""
                     WITH consecutive_ups AS (
-                        SELECT BASIC_STOCKDAILYDATA.TS_CODE as stock_code, COUNT(*) as up_days
-                        FROM BASIC_STOCKDAILYDATA
-                        WHERE TRADE_DATE IN %s
-                        AND CLOSE = UP_LIMIT
-                        GROUP BY BASIC_STOCKDAILYDATA.TS_CODE
+                        SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
+                        FROM BASIC_STOCKDAILYDATA s
+                        WHERE s.TRADE_DATE IN %s
+                        AND s.CLOSE = s.UP_LIMIT
+                        GROUP BY s.STOCK_ID
                         HAVING COUNT(*) = 2
                     )
-                    SELECT DISTINCT s.TS_CODE
+                    SELECT DISTINCT s.STOCK_ID
                     FROM consecutive_ups c
-                    JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.TS_CODE
+                    JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
                     WHERE s.TRADE_DATE IN %s
                     AND s.CLOSE < s.OPEN
-                    GROUP BY s.TS_CODE
+                    GROUP BY s.STOCK_ID
                     HAVING COUNT(*) = 2
                 """, [tuple(analysis_dates[:2]), tuple(analysis_dates[2:])])
                 
@@ -654,13 +654,13 @@ class StockDataFetcher:
             
             for stock_chunk in stock_chunks:
                 history_data = (StockDailyData.objects
-                    .filter(ts_code__in=stock_chunk, trade_date__lt=analysis_dates[0])
+                    .filter(stock_id__in=stock_chunk, trade_date__lt=analysis_dates[0])
                     .exclude(close=F('up_limit'))
                     .order_by('-trade_date')
-                    .select_related('code'))  # 修改为 code，因为这是外键关系
+                    .select_related('stock'))
                 
-                for stock_code in stock_chunk:
-                    stock_history = history_data.filter(ts_code=stock_code)[:3]
+                for stock_id in stock_chunk:
+                    stock_history = history_data.filter(stock_id=stock_id)[:3]
                     if len(stock_history) == 3:
                         # 计算关键价格点位
                         max_high = max(d.high for d in stock_history)
@@ -668,40 +668,44 @@ class StockDataFetcher:
                         avg_price = (max_high + min_low) / 2
                         take_profit = max_high * Decimal('1.075')
                         
-                        # 保存到 PolicyDetails 模型
+                        # 获取股票对象
                         try:
-                            with transaction.atomic():
-                                stock_obj = Code.objects.get(ts_code=stock_code)
-                                PolicyDetails.objects.create(
-                                    stock=stock_obj,
-                                    date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
-                                    first_buy_point=max_high,
-                                    second_buy_point=avg_price,
-                                    stop_loss_point=min_low,
-                                    take_profit_point=take_profit,
-                                    strategy_type='龙回头',
-                                    signal_strength=Decimal('0.85'),
-                                    current_status='L'
-                                )
-                                
-                                # 添加到结果列表
-                                result_stocks.append({
-                                    'stock': stock_code,
-                                    'pattern_dates': analysis_dates,
-                                    'history_dates': [d.trade_date for d in stock_history],
-                                    'max_high': float(max_high),
-                                    'min_low': float(min_low),
-                                    'avg_price': float(avg_price),
-                                    'take_profit': float(take_profit)
-                                })
-                        except Code.DoesNotExist:
-                            logger.warning(f"股票代码 {stock_code} 在Code表中不存在")
-                            continue
-                        except IntegrityError:
-                            logger.warning(f"股票 {stock_code} 在 {trade_date} 的策略记录已存在")
-                            continue
+                            stock_obj = stock_history[0].stock
+                            
+                            # 保存到 PolicyDetails 模型
+                            try:
+                                with transaction.atomic():
+                                    PolicyDetails.objects.create(
+                                        stock=stock_obj,
+                                        date=datetime.strptime(trade_date, '%Y-%m-%d').date(),
+                                        first_buy_point=max_high,
+                                        second_buy_point=avg_price,
+                                        stop_loss_point=min_low,
+                                        take_profit_point=take_profit,
+                                        strategy_type='龙回头',
+                                        signal_strength=Decimal('0.85'),
+                                        current_status='L'
+                                    )
+                                    
+                                    # 添加到结果列表
+                                    result_stocks.append({
+                                        'stock': stock_obj.ts_code,
+                                        'pattern_dates': analysis_dates,
+                                        'history_dates': [d.trade_date for d in stock_history],
+                                        'max_high': float(max_high),
+                                        'min_low': float(min_low),
+                                        'avg_price': float(avg_price),
+                                        'take_profit': float(take_profit)
+                                    })
+                            except IntegrityError:
+                                logger.warning(f"股票 {stock_obj.ts_code} 在 {trade_date} 的策略记录已存在")
+                                continue
+                            except Exception as e:
+                                logger.error(f"保存策略记录时出错: {str(e)}")
+                                continue
+                            
                         except Exception as e:
-                            logger.error(f"保存策略记录时出错: {str(e)}")
+                            logger.error(f"获取股票信息时出错: {str(e)}")
                             continue
             
             saved_count = len(result_stocks)
