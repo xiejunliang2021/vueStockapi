@@ -673,29 +673,31 @@ class StockDataFetcher:
                         down_stocks = [row[0] for row in cursor.fetchall()]
                         logger.info(f"SQL 查询完成，找到 {len(down_stocks)} 只股票")
                         
-                        # 分批处理股票数据
+                        # 修改历史数据获取逻辑
                         result_stocks = []
                         for i in range(0, len(down_stocks), 50):
                             stock_chunk = down_stocks[i:i+50]
                             
-                            # 获取历史数据
+                            # 获取第一个涨停日之前的历史数据
+                            first_limit_up_date = datetime.strptime(analysis_dates[3], '%Y-%m-%d').date()
+                            
                             history_data = (StockDailyData.objects
                                 .filter(stock_id__in=stock_chunk)
-                                .filter(trade_date__lt=datetime.strptime(analysis_dates[0], '%Y-%m-%d').date())
-                                .exclude(close=F('up_limit'))
-                                .order_by('-trade_date')
+                                .filter(trade_date__lt=first_limit_up_date)  # 获取第一个涨停日之前的数据
+                                .exclude(close=F('up_limit'))  # 排除涨停日
+                                .order_by('-trade_date')  # 按日期倒序
                                 .select_related('stock'))
                             
                             for stock_id in stock_chunk:
+                                # 获取连续三个非涨停日的数据
                                 stock_history = history_data.filter(stock_id=stock_id)[:3]
-                                if len(stock_history) == 3:
+                                if len(stock_history) == 3:  # 确保有3天的数据
                                     # 计算关键价格点位
                                     max_high = max(d.high for d in stock_history)
                                     min_low = min(d.low for d in stock_history)
                                     avg_price = (max_high + min_low) / 2
                                     take_profit = max_high * Decimal('1.075')
                                     
-                                    # 获取股票对象
                                     try:
                                         stock_obj = stock_history[0].stock
                                         
