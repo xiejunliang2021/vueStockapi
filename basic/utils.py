@@ -415,7 +415,7 @@ class StockDataFetcher:
                 if df is not None and not df.empty:
                     try:
                         total_records = len(df)
-                        print(f"成功获取数据，总记录数: {total_records}")
+                        print(f"获取数据: {total_records} 条记录")
                         
                         # 5. 批量保存数据
                         batch_size = 1000
@@ -446,15 +446,14 @@ class StockDataFetcher:
                                         
                                         StockDailyData.objects.bulk_create(bulk_data)
                                         total_saved += len(bulk_data)
-                                        print(f"已保存 {total_saved}/{total_records} 条记录")
+                                        print(f"进度: {total_saved}/{total_records}")
                                         
                                     except Exception as batch_error:
-                                        print(f"\n批量处理错误: {str(batch_error)}")
-                                        print(f"处理进度: {total_saved}/{total_records}")
+                                        print(f"批量处理错误: {str(batch_error)}")
                                         raise
                             
                             except Exception as tx_error:
-                                print(f"\n事务处理错误: {str(tx_error)}")
+                                print(f"事务错误: {str(tx_error)}")
                                 raise
                             
                         # 6. 清理旧数据
@@ -462,22 +461,16 @@ class StockDataFetcher:
                         
                         return {
                             'status': 'success',
-                            'message': (
-                                f'数据更新完成，共更新 {total_saved} 条记录。'
-                                f'{cleanup_result["message"]}'
-                            )
+                            'message': f'更新完成: {total_saved}/{total_records} 条记录'
                         }
+                        
                     except Exception as save_error:
-                        error_msg = "\n=== 数据保存错误 ===\n"
-                        error_msg += f"错误类型: {type(save_error).__name__}\n"
-                        error_msg += f"错误信息: {str(save_error)}\n"
-                        error_msg += traceback.format_exc()
-                        print(error_msg)
-                        raise Exception(error_msg)
+                        print(f"保存数据错误: {str(save_error)}")
+                        raise
                 else:
                     return {
                         'status': 'failed',
-                        'message': f'没有获取到 {trade_date} 的有效数据'
+                        'message': f'没有获取到 {trade_date} 的数据'
                     }
             else:
                 # 1. 转换日期格式
@@ -531,10 +524,7 @@ class StockDataFetcher:
                         
                         if df is not None and not df.empty:
                             total_records = len(df)
-                            print(f"\n处理 {fetch_date} 的数据，记录数: {total_records}")
-                            
-                            # 分批保存数据
-                            batch_size = 1000
+                            print(f"\n{fetch_date} 获取数据: {total_records} 条记录")
                             
                             with transaction.atomic():
                                 try:
@@ -561,20 +551,19 @@ class StockDataFetcher:
                                             
                                             StockDailyData.objects.bulk_create(bulk_data)
                                             total_saved += len(bulk_data)
-                                            print(f"已保存 {total_saved} 条记录")
+                                            print(f"进度: {total_saved}/{total_records}")
                                             
                                         except Exception as batch_error:
-                                            print(f"\n{fetch_date} 批量处理错误: {str(batch_error)}")
-                                            print(f"当前进度: {total_saved}")
+                                            print(f"{fetch_date} 批量错误: {str(batch_error)}")
                                             raise
                                             
                                 except Exception as tx_error:
-                                    print(f"\n{fetch_date} 事务错误: {str(tx_error)}")
+                                    print(f"{fetch_date} 事务错误: {str(tx_error)}")
                                     raise
                         
                     except Exception as date_error:
-                        print(f"\n处理 {fetch_date} 失败: {str(date_error)}")
-                        continue  # 继续处理下一个日期
+                        print(f"{fetch_date} 处理失败: {str(date_error)}")
+                        continue
                 
                 # 6. 清理旧数据
                 cleanup_result = self.cleanup_old_data()
@@ -595,5 +584,5 @@ class StockDataFetcher:
                     }
             
         except Exception as e:
-            print(f"\n更新数据失败: {str(e)}")
+            print(f"更新失败: {str(e)}")
             raise
