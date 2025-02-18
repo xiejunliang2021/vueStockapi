@@ -480,59 +480,53 @@ class StockDataFetcher:
                 start = datetime.strptime(start_date, '%Y-%m-%d').date()
                 end = datetime.strptime(end_date, '%Y-%m-%d').date()
                 
-                # 2. 获取时间段内的交易日
-                trading_days = TradingCalendar.objects.filter(
-                    date__range=[start, end],
-                    is_trading_day=True
-                ).order_by('date')[:30]  # 最多处理30个交易日
-                
-                if not trading_days:
-                    return {
-                        'status': 'skipped',
-                        'message': f'在 {start_date} 至 {end_date} 期间没有交易日'
-                    }
-                
-                print(f"找到 {len(trading_days)} 个交易日")
-                
-                # 3. 获取已存在的日期
-                existing_dates = set(StockDailyData.objects.filter(
-                    trade_date__range=[start, end]
-                ).values_list('trade_date', flat=True).distinct())
-                
-                print(f"数据库中已存在 {len(existing_dates)} 个日期的数据")
-                
-                # 4. 找出需要获取的日期
-                dates_to_fetch = [
-                    d.date for d in trading_days 
-                    if d.date not in existing_dates
-                ]
-                
-                if not dates_to_fetch:
-                    return {
-                        'status': 'skipped',
-                        'message': '所选时间段内的数据已存在'
-                    }
-                
-                print(f"需要获取 {len(dates_to_fetch)} 个日期的数据")
-                
-                # 5. 获取每个交易日的数据
-                total_saved = 0
-                
-                for fetch_date in dates_to_fetch:
-                    try:
-                        # 获取单日数据
-                        tushare_date = fetch_date.strftime('%Y%m%d')
-                        df = self.fetch_and_filter_daily_data(trade_date=tushare_date)
-                        
-                        if df is not None and not df.empty:
-                            total_records = len(df)
-                            print(f"\n{fetch_date} 获取数据: {total_records} 条记录")
-                            daily_saved = 0  # 记录单日保存数量
+                try:
+                    # 2. 获取时间段内的交易日
+                    trading_days = TradingCalendar.objects.filter(
+                        date__range=[start, end],
+                        is_trading_day=True
+                    ).order_by('date')[:30]  # 最多处理30个交易日
+                    
+                    if not trading_days:
+                        return {
+                            'status': 'skipped',
+                            'message': f'在 {start_date} 至 {end_date} 期间没有交易日'
+                        }
+                    
+                    # 3. 获取已存在的日期
+                    existing_dates = set(StockDailyData.objects.filter(
+                        trade_date__range=[start, end]
+                    ).values_list('trade_date', flat=True).distinct())
+                    
+                    # 4. 找出需要获取的日期
+                    dates_to_fetch = [
+                        d.date for d in trading_days 
+                        if d.date not in existing_dates
+                    ]
+                    
+                    if not dates_to_fetch:
+                        return {
+                            'status': 'skipped',
+                            'message': '所选时间段内的数据已存在'
+                        }
+                    
+                    # 5. 获取每个交易日的数据
+                    total_saved = 0
+                    processed_dates = []
+                    
+                    for fetch_date in dates_to_fetch:
+                        try:
+                            # 获取单日数据
+                            tushare_date = fetch_date.strftime('%Y%m%d')
+                            df = self.fetch_and_filter_daily_data(trade_date=tushare_date)
                             
-                            with transaction.atomic():
+                            if df is not None and not df.empty:
+                                total_records = len(df)
+                                daily_saved = 0
+                                
                                 try:
-                                    for start_idx in range(0, total_records, batch_size):
-                                        try:
+                                    with transaction.atomic():
+                                        for start_idx in range(0, total_records, batch_size):
                                             end_idx = min(start_idx + batch_size, total_records)
                                             batch_df = df.iloc[start_idx:end_idx]
                                             
@@ -552,41 +546,55 @@ class StockDataFetcher:
                                                 for _, row in batch_df.iterrows()
                                             ]
                                             
-                                            StockDailyData.objects.bulk_create(bulk_data)
-                                            daily_saved += len(bulk_data)
-                                            total_saved += len(bulk_data)
-                                            print(f"进度: {daily_saved}/{total_records} (总计: {total_saved})")
+                                            try:
+                                                StockDailyData.objects.bulk_create(bulk_data)
+                                                daily_saved += len(bulk_data)
+                                                total_saved += len(bulk_data)
+                                            except OSError as ose:
+                                                if "Broken pipe" in str(ose) or "write error" in str(ose):
+                                                    continue  # 忽略管道错误，继续处理
+                                                raise
                                             
-                                        except Exception as batch_error:
-                                            print(f"{fetch_date} 批量错误: {str(batch_error)}")
-                                            raise
-                                            
+                                    processed_dates.append(fetch_date)
+                                    
                                 except Exception as tx_error:
-                                    print(f"{fetch_date} 事务错误: {str(tx_error)}")
-                                    raise
-                        
-                    except Exception as date_error:
-                        print(f"{fetch_date} 处理失败: {str(date_error)}")
-                        continue
+                                    if "Broken pipe" not in str(tx_error) and "write error" not in str(tx_error):
+                                        raise
+                                    
+                        except Exception as date_error:
+                            if "Broken pipe" not in str(date_error) and "write error" not in str(date_error):
+                                continue
+                    
+                    # 6. 清理旧数据
+                    cleanup_result = self.cleanup_old_data()
+                    
+                    if total_saved > 0:
+                        return {
+                            'status': 'success',
+                            'message': (
+                                f'数据更新完成，共更新 {total_saved} 条记录，'
+                                f'处理了 {len(processed_dates)} 个交易日。'
+                                f'{cleanup_result["message"] if "message" in cleanup_result else ""}'
+                            )
+                        }
+                    else:
+                        return {
+                            'status': 'failed',
+                            'message': '没有获取到任何有效数据'
+                        }
+                    
+                except Exception as query_error:
+                    if "Broken pipe" in str(query_error) or "write error" in str(query_error):
+                        return {
+                            'status': 'interrupted',
+                            'message': '数据更新被中断，但已保存部分数据'
+                        }
+                    raise
                 
-                # 6. 清理旧数据
-                cleanup_result = self.cleanup_old_data()
-                
-                if total_saved > 0:
-                    return {
-                        'status': 'success',
-                        'message': (
-                            f'数据更新完成，共更新 {total_saved} 条记录，'
-                            f'处理了 {len(dates_to_fetch)} 个交易日。'
-                            f'{cleanup_result["message"]}'
-                        )
-                    }
-                else:
-                    return {
-                        'status': 'failed',
-                        'message': '没有获取到任何有效数据'
-                    }
-            
         except Exception as e:
-            print(f"更新失败: {str(e)}")
+            if "Broken pipe" in str(e) or "write error" in str(e):
+                return {
+                    'status': 'interrupted',
+                    'message': '连接中断，但已保存部分数据'
+                }
             raise
