@@ -647,17 +647,17 @@ class StockDataFetcher:
                 
                 logger.info(f"分析日期列表: {analysis_dates}")
                 
-                # 执行 SQL 查询
+                # 修改 SQL 查询，使用命名参数
                 try:
                     with connection.cursor() as cursor:
                         logger.debug("开始执行 SQL 查询")
-                        cursor.execute("""
+                        sql = """
                             WITH consecutive_ups AS (
                                 SELECT s.STOCK_ID as stock_code, COUNT(*) as up_days
                                 FROM BASIC_STOCKDAILYDATA s
                                 WHERE s.TRADE_DATE IN (
-                                    TO_DATE(:1, 'YYYY-MM-DD'),
-                                    TO_DATE(:2, 'YYYY-MM-DD')
+                                    TO_DATE(:date1, 'YYYY-MM-DD'),
+                                    TO_DATE(:date2, 'YYYY-MM-DD')
                                 )
                                 AND s.CLOSE = s.UP_LIMIT
                                 GROUP BY s.STOCK_ID
@@ -667,20 +667,30 @@ class StockDataFetcher:
                             FROM consecutive_ups c
                             JOIN BASIC_STOCKDAILYDATA s ON c.stock_code = s.STOCK_ID
                             WHERE s.TRADE_DATE IN (
-                                TO_DATE(:3, 'YYYY-MM-DD'),
-                                TO_DATE(:4, 'YYYY-MM-DD')
+                                TO_DATE(:date3, 'YYYY-MM-DD'),
+                                TO_DATE(:date4, 'YYYY-MM-DD')
                             )
                             AND s.CLOSE < s.OPEN
                             GROUP BY s.STOCK_ID
                             HAVING COUNT(*) = 2
-                        """, analysis_dates)
+                        """
+                        
+                        params = {
+                            'date1': analysis_dates[0],
+                            'date2': analysis_dates[1],
+                            'date3': analysis_dates[2],
+                            'date4': analysis_dates[3]
+                        }
+                        
+                        logger.debug(f"SQL 参数: {params}")
+                        cursor.execute(sql, params)
                         
                         down_stocks = [row[0] for row in cursor.fetchall()]
                         logger.info(f"SQL 查询完成，找到 {len(down_stocks)} 只股票")
                         
                 except Exception as e:
                     logger.error(f"SQL 查询出错: {str(e)}")
-                    logger.error(f"SQL 参数: {analysis_dates}")
+                    logger.error(f"SQL 参数: {params}")
                     raise
                 
                 # 修改后续查询代码
