@@ -279,4 +279,37 @@ class StockPatternAnalysisView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+class PolicyDetailsByDateView(APIView):
+    """获取特定日期的策略详情视图"""
+    
+    def get(self, request, date):
+        try:
+            # 转换日期格式
+            query_date = datetime.strptime(date, '%Y-%m-%d').date()
+            
+            # 获取指定日期的策略详情
+            policies = PolicyDetails.objects.filter(
+                date=query_date
+            ).select_related('stock')
+            
+            # 序列化数据
+            serializer = PolicyDetailsSerializer(policies, many=True)
+            
+            return Response({
+                'status': 'success',
+                'message': f'找到 {len(policies)} 条策略记录',
+                'data': serializer.data
+            })
+            
+        except ValueError:
+            return Response(
+                {'status': 'error', 'message': '日期格式无效'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 

@@ -12,6 +12,8 @@ import logging
 from decimal import Decimal
 from django.db.utils import IntegrityError
 
+# 配置logger
+logger = logging.getLogger(__name__)
 
 # 初始化 Tushare
 ts.set_token(config("TUSHARE_TOKEN"))
