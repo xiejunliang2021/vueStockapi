@@ -466,7 +466,7 @@ class StockDataFetcher:
                                         print("\n出错批次的前5条记录:")
                                         for record in error_context['error_records']:
                                             print(record)
-                                        print("\n详细错误堆栈:")
+                                        # print("\n详细错误堆栈:")
                                         print(error_context['error_traceback'])
                                         raise Exception(f"批量处理错误: {str(batch_error)}")
                             
@@ -474,7 +474,7 @@ class StockDataFetcher:
                                 print("\n=== 事务处理错误 ===")
                                 print(f"错误类型: {type(tx_error).__name__}")
                                 print(f"错误信息: {str(tx_error)}")
-                                print("\n详细错误堆栈:")
+                                # print("\n详细错误堆栈:")
                                 print(traceback.format_exc())
                                 raise
                             
@@ -492,7 +492,7 @@ class StockDataFetcher:
                         error_msg = "\n=== 数据保存错误 ===\n"
                         error_msg += f"错误类型: {type(save_error).__name__}\n"
                         error_msg += f"错误信息: {str(save_error)}\n"
-                        error_msg += "\n详细错误堆栈:\n"
+                        # error_msg += "\n详细错误堆栈:\n"
                         error_msg += traceback.format_exc()
                         print(error_msg)
                         raise Exception(error_msg)
@@ -502,14 +502,138 @@ class StockDataFetcher:
                         'message': f'没有获取到 {trade_date} 的有效数据'
                     }
             else:
-                # 处理日期范围的代码保持不变...
-                pass
+                # 1. 转换日期格式
+                start = datetime.strptime(start_date, '%Y-%m-%d').date()
+                end = datetime.strptime(end_date, '%Y-%m-%d').date()
+                
+                # 2. 获取时间段内的交易日
+                trading_days = TradingCalendar.objects.filter(
+                    date__range=[start, end],
+                    is_trading_day=True
+                ).order_by('date')[:30]  # 最多处理30个交易日
+                
+                if not trading_days:
+                    return {
+                        'status': 'skipped',
+                        'message': f'在 {start_date} 至 {end_date} 期间没有交易日'
+                    }
+                
+                print(f"找到 {len(trading_days)} 个交易日")
+                
+                # 3. 获取已存在的日期
+                existing_dates = set(StockDailyData.objects.filter(
+                    trade_date__range=[start, end]
+                ).values_list('trade_date', flat=True).distinct())
+                
+                print(f"数据库中已存在 {len(existing_dates)} 个日期的数据")
+                
+                # 4. 找出需要获取的日期
+                dates_to_fetch = [
+                    d.date for d in trading_days 
+                    if d.date not in existing_dates
+                ]
+                
+                if not dates_to_fetch:
+                    return {
+                        'status': 'skipped',
+                        'message': '所选时间段内的数据已存在'
+                    }
+                
+                print(f"需要获取 {len(dates_to_fetch)} 个日期的数据")
+                
+                # 5. 获取每个交易日的数据
+                all_data = []
+                total_saved = 0
+                
+                for fetch_date in dates_to_fetch:
+                    try:
+                        # 获取单日数据
+                        tushare_date = fetch_date.strftime('%Y%m%d')
+                        df = self.fetch_and_filter_daily_data(trade_date=tushare_date)
+                        
+                        if df is not None and not df.empty:
+                            total_records = len(df)
+                            print(f"\n处理 {fetch_date} 的数据，记录数: {total_records}")
+                            
+                            # 分批保存数据
+                            batch_size = 1000
+                            
+                            with transaction.atomic():
+                                try:
+                                    for start_idx in range(0, total_records, batch_size):
+                                        try:
+                                            end_idx = min(start_idx + batch_size, total_records)
+                                            batch_df = df.iloc[start_idx:end_idx]
+                                            
+                                            bulk_data = [
+                                                StockDailyData(
+                                                    stock=row['stock'],
+                                                    trade_date=row['trade_date'],
+                                                    open=row['open'],
+                                                    high=row['high'],
+                                                    low=row['low'],
+                                                    close=row['close'],
+                                                    volume=row['vol'],
+                                                    amount=row['amount'],
+                                                    up_limit=row['up_limit'],
+                                                    down_limit=row['down_limit']
+                                                )
+                                                for _, row in batch_df.iterrows()
+                                            ]
+                                            
+                                            StockDailyData.objects.bulk_create(bulk_data)
+                                            total_saved += len(bulk_data)
+                                            print(f"已保存 {total_saved} 条记录")
+                                            
+                                        except Exception as batch_error:
+                                            error_context = {
+                                                'date': fetch_date,
+                                                'batch_start': start_idx,
+                                                'batch_end': end_idx,
+                                                'error_traceback': traceback.format_exc()
+                                            }
+                                            print(f"\n=== {fetch_date} 批量处理错误 ===")
+                                            print(f"错误类型: {type(batch_error).__name__}")
+                                            print(f"错误信息: {str(batch_error)}")
+                                            print(error_context['error_traceback'])
+                                            raise
+                                            
+                                except Exception as tx_error:
+                                    print(f"\n=== {fetch_date} 事务处理错误 ===")
+                                    print(f"错误类型: {type(tx_error).__name__}")
+                                    print(f"错误信息: {str(tx_error)}")
+                                    print(traceback.format_exc())
+                                    raise
+                        
+                    except Exception as date_error:
+                        print(f"\n=== 处理 {fetch_date} 时出错 ===")
+                        print(f"错误类型: {type(date_error).__name__}")
+                        print(f"错误信息: {str(date_error)}")
+                        print(traceback.format_exc())
+                        continue  # 继续处理下一个日期
+                
+                # 6. 清理旧数据
+                cleanup_result = self.cleanup_old_data()
+                
+                if total_saved > 0:
+                    return {
+                        'status': 'success',
+                        'message': (
+                            f'数据更新完成，共更新 {total_saved} 条记录，'
+                            f'处理了 {len(dates_to_fetch)} 个交易日。'
+                            f'{cleanup_result["message"]}'
+                        )
+                    }
+                else:
+                    return {
+                        'status': 'failed',
+                        'message': '没有获取到任何有效数据'
+                    }
             
         except Exception as e:
             error_msg = "\n=== 更新处理错误 ===\n"
             error_msg += f"错误类型: {type(e).__name__}\n"
             error_msg += f"错误信息: {str(e)}\n"
-            error_msg += "\n详细错误堆栈:\n"
             error_msg += traceback.format_exc()
             print(error_msg)
             raise Exception(error_msg)
