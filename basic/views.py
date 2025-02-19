@@ -189,7 +189,6 @@ class StockDailyDataUpdateView(APIView):
                 try:
                     start = datetime.strptime(start_date, '%Y-%m-%d').date()
                     if end_date:
-                        # 有结束日期，查询日期范围
                         end = datetime.strptime(end_date, '%Y-%m-%d').date()
                         if start > end:
                             return Response(
@@ -198,8 +197,8 @@ class StockDailyDataUpdateView(APIView):
                             )
                         queryset = queryset.filter(trade_date__range=[start, end])
                     else:
-                        # 无结束日期，查询从起始日期到最新
-                        queryset = queryset.filter(trade_date__gte=start)
+                        end = datetime.now().date()
+                        queryset = queryset.filter(trade_date__range=[start, end])
                 except ValueError:
                     return Response(
                         {'status': 'error', 'message': '日期格式无效，请使用 YYYY-MM-DD 格式'},
@@ -416,27 +415,26 @@ class StockPatternView(APIView):
             elif start_date:
                 try:
                     start = datetime.strptime(start_date, '%Y-%m-%d').date()
-                    end = None
                     if end_date:
                         end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                        if start > end:
-                            return Response(
-                                {'status': 'error', 'message': 'start_date 不能晚于 end_date'},
-                                status=status.HTTP_400_BAD_REQUEST
-                            )
+                    else:
+                        end = datetime.now().date()
+                        
+                    if start > end:
+                        return Response(
+                            {'status': 'error', 'message': 'start_date 不能晚于 end_date'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
                     
                     # 获取需要分析的日期列表
                     trading_days = TradingCalendar.objects.filter(
-                        date__gte=start,
+                        date__range=[start, end],
                         is_trading_day=True
-                    )
-                    if end:
-                        trading_days = trading_days.filter(date__lte=end)
+                    ).order_by('date')
                     
                     # 过滤掉已有数据的日期
                     existing_dates = set(PolicyDetails.objects.filter(
-                        date__gte=start,
-                        date__lte=end if end else datetime.now().date()
+                        date__range=[start, end]
                     ).values_list('date', flat=True))
                     
                     all_results = []
