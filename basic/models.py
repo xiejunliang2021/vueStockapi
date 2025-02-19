@@ -87,8 +87,8 @@ class PolicyDetails(models.Model):
         unique_together = ('stock', 'date', 'strategy_type')
         ordering = ['-date', 'stock']  # 添加默认排序
         indexes = [
-            models.Index(fields=['date']),
-            models.Index(fields=['stock', 'date']),
+            models.Index(fields=['-date']),
+            models.Index(fields=['strategy_type']),
             models.Index(fields=['current_status']),
         ]
 

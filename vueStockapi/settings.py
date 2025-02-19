@@ -82,10 +82,13 @@ DATABASES = {
         'PASSWORD': config('PASSWORD_ORACLE',),
         'HOST': '',
         'PORT': '',
+        'CONN_MAX_AGE': 60,  # 数据库连接持久化时间（秒）
         'OPTIONS': {
             'retry_count': 20,
             'retry_delay': 3,
-            'ssl_server_dn_match': True
+            'ssl_server_dn_match': True,
+            'connect_timeout': 10,
+            'command_timeout': 600  # 10分钟查询超时
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
@@ -210,12 +213,16 @@ LOGGING = {
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# CORS 配置 - 让 Nginx 处理
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = []
+# CORS 配置
+CORS_ALLOW_ALL_ORIGINS = False  # 禁用允许所有源
+CORS_ALLOWED_ORIGINS = [
+    "https://www.huabenwuxin.com",
+    "http://localhost:5173",  # 开发环境
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
-# 其他 CORS 设置
+# CORS 配置
 CORS_ALLOW_METHODS = [
     'GET',
     'POST',
@@ -240,7 +247,11 @@ CORS_ALLOW_HEADERS = [
 # 预检请求配置
 CORS_PREFLIGHT_MAX_AGE = 86400
 
-# 可选：添加更多安全相关配置
-CORS_REPLACE_HTTPS_REFERER = False
-CORS_EXPOSE_HEADERS = []
-CORS_URLS_REGEX = r'^/api/.*$'  # 只对 /api/ 路径启用 CORS
+# 确保 corsheaders 中间件在正确的位置
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # 必须在 CommonMiddleware 之前
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    # ... 其他中间件
+]
