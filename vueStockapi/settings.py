@@ -210,16 +210,10 @@ LOGGING = {
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# CORS 配置
-CORS_ALLOWED_ORIGINS = [
-    "https://www.huabenwuxin.com",
-    "http://localhost:5173",
-]
-
-# 重要：确保这些设置正确
+# CORS 配置 - 让 Nginx 处理
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = []
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False  # 明确设置为 False
-CORS_ORIGIN_ALLOW_ALL = False   # 明确设置为 False
 
 # 其他 CORS 设置
 CORS_ALLOW_METHODS = [
