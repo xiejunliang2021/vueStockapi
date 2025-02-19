@@ -24,6 +24,7 @@ ALLOWED_HOSTS = ['*' ]
 # Application definition
 
 INSTALLED_APPS = [
+    'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -34,7 +35,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'coreapi',
     'django_filters',
-    'corsheaders',
     'django_celery_beat',
     'django_celery_results',
 ]
@@ -211,17 +211,17 @@ if not os.path.exists('logs'):
     os.makedirs('logs')
 
 # CORS 配置
-# CORS_ALLOW_ALL_ORIGINS = True  
-
-# 改用明确的允许源列表
 CORS_ALLOWED_ORIGINS = [
     "https://www.huabenwuxin.com",
-    "http://localhost:5173",  # 开发环境
+    "http://localhost:5173",
 ]
 
-# 其他 CORS 设置
+# 重要：确保这些设置正确
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False  # 明确设置为 False
+CORS_ORIGIN_ALLOW_ALL = False   # 明确设置为 False
 
+# 其他 CORS 设置
 CORS_ALLOW_METHODS = [
     'GET',
     'POST',
@@ -243,6 +243,10 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# 添加这些配置以处理预检请求
-CORS_PREFLIGHT_MAX_AGE = 86400  # 24小时
+# 预检请求配置
+CORS_PREFLIGHT_MAX_AGE = 86400
+
+# 可选：添加更多安全相关配置
+CORS_REPLACE_HTTPS_REFERER = False
 CORS_EXPOSE_HEADERS = []
+CORS_URLS_REGEX = r'^/api/.*$'  # 只对 /api/ 路径启用 CORS
