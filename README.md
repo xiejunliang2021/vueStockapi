@@ -18,3 +18,14 @@
 - 添加文件tasks.py，用于配置任务
 - 添加文件tests.py，用于配置测试
 - 添加文件utils.py，用于配置工具函数
+
+## 主要功能
+
+- 获取或更新股票代码
+```
+python manage.py fetch_and_save_stock_data
+```
+- 获取或更新股票日线数据
+```
+python manage.py fetch_and_save_stock_data
+```
