@@ -36,7 +36,7 @@ INSTALLED_APPS = [
     'coreapi',
     'django_filters',
     'django_celery_beat',
-    'django_celery_results',
+    'django_celery_results'
 ]
 
 MIDDLEWARE = [
@@ -213,22 +213,34 @@ LOGGING = {
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# CORS 配置
-# CORS_ALLOW_ALL_ORIGINS = False
-# CORS_ALLOWED_ORIGINS = [
-#     "https://www.huabenwuxin.com",
-#     "http://localhost:5173",
-# ]
-# CORS_ALLOW_CREDENTIALS = True
-# CORS_ALLOW_METHODS = ...
-# CORS_ALLOW_HEADERS = ...
-# CORS_PREFLIGHT_MAX_AGE = 86400
-
-# 确保 corsheaders 中间件在正确的位置
-MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # 必须在 CommonMiddleware 之前
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    # ... 其他中间件
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # 开发环境
+    "https://www.huabenwuxin.com"  # 生产环境
 ]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# 添加更多的 CORS 配置
+CORS_ALLOW_METHODS = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS'
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# 允许携带认证信息
+CORS_ALLOW_CREDENTIALS = True
