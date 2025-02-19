@@ -211,12 +211,17 @@ if not os.path.exists('logs'):
     os.makedirs('logs')
 
 # CORS 配置
-CORS_ALLOW_ALL_ORIGINS = True  # 开发环境使用
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "https://www.huabenwuxin.com"
-# ]
+# CORS_ALLOW_ALL_ORIGINS = True  
+
+# 改用明确的允许源列表
+CORS_ALLOWED_ORIGINS = [
+    "https://www.huabenwuxin.com",
+    "http://localhost:5173",  # 开发环境
+]
+
+# 其他 CORS 设置
 CORS_ALLOW_CREDENTIALS = True
+
 CORS_ALLOW_METHODS = [
     'GET',
     'POST',
@@ -237,3 +242,7 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# 添加这些配置以处理预检请求
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24小时
+CORS_EXPOSE_HEADERS = []
