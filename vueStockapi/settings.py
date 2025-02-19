@@ -214,38 +214,15 @@ if not os.path.exists('logs'):
     os.makedirs('logs')
 
 # CORS 配置
-CORS_ALLOW_ALL_ORIGINS = False  # 禁用允许所有源
-CORS_ALLOWED_ORIGINS = [
-    "https://www.huabenwuxin.com",
-    "http://localhost:5173",  # 开发环境
-]
-
-CORS_ALLOW_CREDENTIALS = True
-
-# CORS 配置
-CORS_ALLOW_METHODS = [
-    'GET',
-    'POST',
-    'PUT',
-    'PATCH',
-    'DELETE',
-    'OPTIONS'
-]
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
-# 预检请求配置
-CORS_PREFLIGHT_MAX_AGE = 86400
+# CORS_ALLOW_ALL_ORIGINS = False
+# CORS_ALLOWED_ORIGINS = [
+#     "https://www.huabenwuxin.com",
+#     "http://localhost:5173",
+# ]
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_METHODS = ...
+# CORS_ALLOW_HEADERS = ...
+# CORS_PREFLIGHT_MAX_AGE = 86400
 
 # 确保 corsheaders 中间件在正确的位置
 MIDDLEWARE = [
