@@ -211,5 +211,8 @@ if not os.path.exists('logs'):
     os.makedirs('logs')
 
 # CORS 配置
-CORS_ALLOW_ALL_ORIGINS = True  # 开发环境使用
+# CORS_ALLOW_ALL_ORIGINS = True  # 开发环境使用
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]
 CORS_ALLOW_CREDENTIALS = True
