@@ -148,6 +148,8 @@ class CheckTradingDayView(generics.GenericAPIView):
             )
 
 class StockDailyDataUpdateView(APIView):
+    http_method_names = ['get', 'post']
+    
     """股票日线数据更新和查询视图
     
     GET 请求支持以下查询方式：
@@ -252,41 +254,13 @@ class StockDailyDataUpdateView(APIView):
             )
     
     def post(self, request):
-        trade_date = request.data.get('trade_date')
-        start_date = request.data.get('start_date')
-        end_date = request.data.get('end_date')
-        
         try:
-            # 参数验证
-            if not (trade_date or (start_date and end_date)):
-                return Response(
-                    {'error': '请提供 trade_date 或 start_date 和 end_date'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            trade_date = request.data.get('trade_date')
+            start_date = request.data.get('start_date')
+            end_date = request.data.get('end_date')
             
-            # 日期格式验证
-            if trade_date:
-                try:
-                    datetime.strptime(trade_date, '%Y-%m-%d')
-                except ValueError:
-                    return Response(
-                        {'error': 'trade_date 格式无效，请使用 YYYY-MM-DD 格式'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            else:
-                try:
-                    start = datetime.strptime(start_date, '%Y-%m-%d')
-                    end = datetime.strptime(end_date, '%Y-%m-%d')
-                    if start > end:
-                        return Response(
-                            {'error': 'start_date 不能晚于 end_date'},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
-                except ValueError:
-                    return Response(
-                        {'error': '日期格式无效，请使用 YYYY-MM-DD 格式'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+            # 初始化 total_saved 变量
+            total_saved = 0
             
             # 获取数据
             fetcher = StockDataFetcher()
@@ -303,7 +277,8 @@ class StockDailyDataUpdateView(APIView):
             if result['status'] == 'success':
                 return Response({
                     'status': 'success',
-                    'message': result['message']
+                    'message': result['message'],
+                    'total_saved': total_saved
                 })
             elif result['status'] == 'skipped':
                 return Response({
@@ -317,8 +292,6 @@ class StockDailyDataUpdateView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
-            # 记录详细错误信息
-            print(f"更新数据时发生错误：{str(e)}")
             return Response(
                 {
                     'status': 'error',
@@ -329,6 +302,8 @@ class StockDailyDataUpdateView(APIView):
             )
 
 class StockPatternView(APIView):
+    http_method_names = ['get', 'post']
+    
     """股票模式分析和查询视图
     
     GET 请求支持以下查询方式：
@@ -416,6 +391,7 @@ class StockPatternView(APIView):
                 )
             
             dates_to_analyze = []
+            fetcher = StockDataFetcher()
             
             # 处理不同的日期参数组合
             if trade_date:
@@ -423,13 +399,21 @@ class StockPatternView(APIView):
                     query_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
                     # 检查数据是否已存在
                     if not PolicyDetails.objects.filter(date=query_date).exists():
-                        dates_to_analyze.append(trade_date)
+                        result = fetcher.analyze_stock_pattern(trade_date)
+                        if result['status'] == 'success':
+                            return Response(result)
+                    else:
+                        return Response({
+                            'status': 'success',
+                            'message': '该日期的数据已存在',
+                            'data': []
+                        })
                 except ValueError:
                     return Response(
                         {'status': 'error', 'message': 'trade_date 格式无效，请使用 YYYY-MM-DD 格式'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-            else:
+            elif start_date:
                 try:
                     start = datetime.strptime(start_date, '%Y-%m-%d').date()
                     end = None
@@ -455,39 +439,26 @@ class StockPatternView(APIView):
                         date__lte=end if end else datetime.now().date()
                     ).values_list('date', flat=True))
                     
-                    dates_to_analyze = [
-                        d.date.strftime('%Y-%m-%d') 
-                        for d in trading_days 
-                        if d.date not in existing_dates
-                    ]
+                    all_results = []
+                    for trading_day in trading_days:
+                        if trading_day.date not in existing_dates:
+                            result = fetcher.analyze_stock_pattern(
+                                trading_day.date.strftime('%Y-%m-%d')
+                            )
+                            if result['status'] == 'success':
+                                all_results.extend(result.get('data', []))
+                    
+                    return Response({
+                        'status': 'success',
+                        'message': f'成功分析并保存了 {len(all_results)} 条数据',
+                        'data': all_results
+                    })
                     
                 except ValueError:
                     return Response(
                         {'status': 'error', 'message': '日期格式无效，请使用 YYYY-MM-DD 格式'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-            
-            if not dates_to_analyze:
-                return Response({
-                    'status': 'success',
-                    'message': '所选日期范围的数据已存在',
-                    'data': []
-                })
-            
-            # 分析数据
-            fetcher = StockDataFetcher()
-            all_results = []
-            
-            for date in dates_to_analyze:
-                result = fetcher.analyze_stock_pattern(date)
-                if result['status'] == 'success':
-                    all_results.extend(result.get('data', []))
-            
-            return Response({
-                'status': 'success',
-                'message': f'成功分析并保存了 {len(all_results)} 条数据',
-                'data': all_results
-            })
             
         except Exception as e:
             return Response(
