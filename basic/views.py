@@ -9,6 +9,7 @@ from .analysis import ContinuousLimitStrategy
 from datetime import datetime
 from .utils import StockDataFetcher
 from django.core.cache import cache
+from corsheaders.decorators import cors_allow_origins
 
 class PolicyDetailsListCreateView(generics.ListCreateAPIView):
     """策略详情列表和创建视图"""
@@ -300,6 +301,7 @@ class StockDailyDataUpdateView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+@cors_allow_origins(["https://www.huabenwuxin.com"])
 class StockPatternView(APIView):
     http_method_names = ['get', 'post']
     
