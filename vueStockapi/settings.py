@@ -213,34 +213,14 @@ LOGGING = {
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # 开发环境
-    "https://www.huabenwuxin.com"  # 生产环境
-]
+# 注释掉或删除所有 CORS 相关配置
+# CORS_ALLOWED_ORIGINS = [...]
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_METHODS = [...]
+# CORS_ALLOW_HEADERS = [...]
 
-CORS_ALLOW_CREDENTIALS = True
-
-# 添加更多的 CORS 配置
-CORS_ALLOW_METHODS = [
-    'GET',
-    'POST',
-    'PUT',
-    'PATCH',
-    'DELETE',
-    'OPTIONS'
-]
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
-# 允许携带认证信息
-CORS_ALLOW_CREDENTIALS = True
+# 只保留 corsheaders 的基本配置
+# CORS_ALLOWED_ORIGINS = [...]
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_METHODS = [...]
+# CORS_ALLOW_HEADERS = [...]
