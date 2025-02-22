@@ -87,8 +87,8 @@ DATABASES = {
             'retry_count': 20,
             'retry_delay': 3,
             'ssl_server_dn_match': True,
-            'connect_timeout': 10,
-            'command_timeout': 600  # 10分钟查询超时
+        #    'connect_timeout': 10,
+        #    'command_timeout': 600  # 10分钟查询超时
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
