@@ -211,16 +211,23 @@ LOGGING = {
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# 注释掉或删除所有 CORS 相关配置
-# CORS_ALLOWED_ORIGINS = [...]
-# CORS_ALLOW_CREDENTIALS = True
-# CORS_ALLOW_METHODS = [...]
-# CORS_ALLOW_HEADERS = [...]
+# CORS 配置
+# 是否允许所有源访问，生产环境建议设置为 False
+CORS_ALLOW_ALL_ORIGINS = False
 
-<<<<<<< HEAD
 CORS_ALLOW_CREDENTIALS = True
 
 # 添加更多的 CORS 配置
+# 允许访问的源列表，当 CORS_ALLOW_ALL_ORIGINS 为 False 时生效
+CORS_ALLOWED_ORIGINS = [
+    "https://www.huabenwuxin.com",  # 生产环境域名
+    "http://localhost:5173",        # 开发环境域名
+]
+
+# 是否允许携带认证信息（cookies, HTTP authentication）
+CORS_ALLOW_CREDENTIALS = True
+
+# 允许的 HTTP 方法列表
 CORS_ALLOW_METHODS = [
     'GET',
     'POST',
@@ -230,6 +237,7 @@ CORS_ALLOW_METHODS = [
     'OPTIONS'
 ]
 
+# 允许的请求头列表
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -242,12 +250,28 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# 允许携带认证信息
-CORS_ALLOW_CREDENTIALS = True
-=======
-# 只保留 corsheaders 的基本配置
-# CORS_ALLOWED_ORIGINS = [...]
-# CORS_ALLOW_CREDENTIALS = True
-# CORS_ALLOW_METHODS = [...]
-# CORS_ALLOW_HEADERS = [...]
->>>>>>> afc51b8a220c1c83339f5118a5ee6709fa65800f
+# 预检请求（OPTIONS）的缓存时间（秒）
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24小时
+
+# 是否允许处理非标准的 Content-Type 头
+CORS_ALLOW_NON_STANDARD_CONTENT_TYPE = False
+
+# 是否在响应中添加 Vary: Origin 头
+CORS_VARY_HEADER = True
+
+# 是否允许特定的 HTTP 头暴露给 JavaScript
+CORS_EXPOSE_HEADERS = [
+    'content-disposition',  # 允许前端访问下载文件名
+]
+
+# URL 正则表达式，只对匹配的 URL 启用 CORS
+CORS_URLS_REGEX = r'^/api/.*$'  # 只对 /api/ 开头的 URL 启用 CORS
+
+# 是否检查请求头中的 Host 是否与 Django 的 ALLOWED_HOSTS 匹配
+CORS_ORIGIN_ALLOW_ALL = False
+
+# 是否允许请求中包含通配符
+CORS_ALLOW_WILDCARDS = False
+
+# 替换现有的 CORS 响应头而不是添加它们
+CORS_REPLACE_HTTPS_REFERER = False
