@@ -87,8 +87,6 @@ DATABASES = {
             'retry_count': 20,
             'retry_delay': 3,
             'ssl_server_dn_match': True,
-        #    'connect_timeout': 10,
-        #    'command_timeout': 600  # 10分钟查询超时
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
@@ -213,11 +211,13 @@ LOGGING = {
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # 开发环境
-    "https://www.huabenwuxin.com"  # 生产环境
-]
+# 注释掉或删除所有 CORS 相关配置
+# CORS_ALLOWED_ORIGINS = [...]
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_METHODS = [...]
+# CORS_ALLOW_HEADERS = [...]
 
+<<<<<<< HEAD
 CORS_ALLOW_CREDENTIALS = True
 
 # 添加更多的 CORS 配置
@@ -244,3 +244,10 @@ CORS_ALLOW_HEADERS = [
 
 # 允许携带认证信息
 CORS_ALLOW_CREDENTIALS = True
+=======
+# 只保留 corsheaders 的基本配置
+# CORS_ALLOWED_ORIGINS = [...]
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_METHODS = [...]
+# CORS_ALLOW_HEADERS = [...]
+>>>>>>> afc51b8a220c1c83339f5118a5ee6709fa65800f
