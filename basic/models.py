@@ -211,3 +211,29 @@ class TradingCalendar(models.Model):
     def __str__(self):
         return f"{self.date} - {'交易日' if self.is_trading_day else '非交易日'}"
 
+
+# 添加 Game2048 模型
+class Game2048(models.Model):
+    """2048游戏模型
+    
+    用于存储游戏状态和分数
+    
+    字段说明：
+    - board: 游戏板状态（JSON格式）
+    - score: 当前分数
+    - high_score: 最高分数
+    - moves: 移动次数
+    - created_at: 游戏创建时间
+    - updated_at: 最后更新时间
+    """
+    board = models.JSONField(default=list)  # 存储4x4的游戏板
+    score = models.IntegerField(default=0)
+    high_score = models.IntegerField(default=0)
+    moves = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "2048游戏"
+        verbose_name_plural = "2048游戏"
+

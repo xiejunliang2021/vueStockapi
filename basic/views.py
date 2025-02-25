@@ -257,9 +257,6 @@ class StockDailyDataUpdateView(APIView):
             start_date = request.data.get('start_date')
             end_date = request.data.get('end_date')
             
-            # 初始化 total_saved 变量
-            total_saved = 0
-            
             # 获取数据
             fetcher = StockDataFetcher()
             
@@ -276,7 +273,7 @@ class StockDailyDataUpdateView(APIView):
                 return Response({
                     'status': 'success',
                     'message': result['message'],
-                    'total_saved': total_saved
+                    'total_saved': result.get('total_saved', 0)
                 })
             elif result['status'] == 'skipped':
                 return Response({

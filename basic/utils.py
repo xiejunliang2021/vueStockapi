@@ -469,10 +469,17 @@ class StockDataFetcher:
                         # 6. 清理旧数据
                         cleanup_result = self.cleanup_old_data()
                         
-                        return {
+                        result = {
                             'status': 'success',
                             'message': f'更新完成: {total_saved}/{total_records} 条记录'
                         }
+                        
+                        if result['status'] == 'success':
+                            return {
+                                'status': 'success',
+                                'message': result['message'],
+                                'total_saved': total_saved  # 添加保存的记录数
+                            }
                         
                     except Exception as save_error:
                         print(f"保存数据错误: {str(save_error)}")
@@ -576,7 +583,7 @@ class StockDataFetcher:
                     cleanup_result = self.cleanup_old_data()
                     
                     if total_saved > 0:
-                        return {
+                        result = {
                             'status': 'success',
                             'message': (
                                 f'数据更新完成，共更新 {total_saved} 条记录，'
@@ -584,6 +591,18 @@ class StockDataFetcher:
                                 f'{cleanup_result["message"] if "message" in cleanup_result else ""}'
                             )
                         }
+                        
+                        if result['status'] == 'success':
+                            return {
+                                'status': 'success',
+                                'message': result['message'],
+                                'total_saved': total_saved  # 添加保存的记录数
+                            }
+                        else:
+                            return {
+                                'status': 'failed',
+                                'message': '没有获取到任何有效数据'
+                            }
                     else:
                         return {
                             'status': 'failed',
