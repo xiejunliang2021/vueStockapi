@@ -260,6 +260,9 @@ class StockDailyDataUpdateView(APIView):
             # 获取数据
             fetcher = StockDataFetcher()
             
+            # 初始化 total_saved
+            total_saved = 0
+            
             if trade_date:
                 result = fetcher.update_all_stocks_daily_data(trade_date=trade_date)
             else:
@@ -268,22 +271,26 @@ class StockDailyDataUpdateView(APIView):
                     end_date=end_date
                 )
             
+            # 从结果中获取 total_saved
+            if isinstance(result, dict):
+                total_saved = result.get('total_saved', 0)
+            
             # 根据结果状态返回不同的响应
-            if result['status'] == 'success':
+            if result.get('status') == 'success':
                 return Response({
                     'status': 'success',
-                    'message': result['message'],
-                    'total_saved': result.get('total_saved', 0)
+                    'message': result.get('message', '数据更新成功'),
+                    'total_saved': total_saved
                 })
-            elif result['status'] == 'skipped':
+            elif result.get('status') == 'skipped':
                 return Response({
                     'status': 'skipped',
-                    'message': result['message']
+                    'message': result.get('message', '数据已存在，跳过更新')
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({
                     'status': 'failed',
-                    'message': result['message']
+                    'message': result.get('message', '更新失败')
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
@@ -295,7 +302,6 @@ class StockDailyDataUpdateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 class StockPatternView(APIView):
     http_method_names = ['get', 'post']
     
