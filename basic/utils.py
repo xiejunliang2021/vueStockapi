@@ -388,8 +388,7 @@ class StockDataFetcher:
     def update_all_stocks_daily_data(self, trade_date=None, start_date=None, end_date=None):
         """更新所有股票的日线数据"""
         try:
-            # 定义批处理大小
-            batch_size = 1000
+            batch_size = 500
             
             if trade_date:
                 # 1. 转换日期格式
@@ -469,18 +468,19 @@ class StockDataFetcher:
                         # 6. 清理旧数据
                         cleanup_result = self.cleanup_old_data()
                         
-                        result = {
-                            'status': 'success',
-                            'message': f'更新完成: {total_saved}/{total_records} 条记录'
-                        }
-                        
-                        if result['status'] == 'success':
+                        # 修改这部分的返回逻辑
+                        if total_saved > 0:
                             return {
                                 'status': 'success',
-                                'message': result['message'],
-                                'total_saved': total_saved  # 添加保存的记录数
+                                'message': f'更新完成: {total_saved}/{total_records} 条记录',
+                                'total_saved': total_saved  # 直接返回 total_saved
                             }
-                        
+                        else:
+                            return {
+                                'status': 'failed',
+                                'message': f'没有获取到 {trade_date} 的数据'
+                            }
+                    
                     except Exception as save_error:
                         print(f"保存数据错误: {str(save_error)}")
                         raise
@@ -582,27 +582,17 @@ class StockDataFetcher:
                     # 6. 清理旧数据
                     cleanup_result = self.cleanup_old_data()
                     
+                    # 修改多日期处理的返回逻辑
                     if total_saved > 0:
-                        result = {
+                        return {
                             'status': 'success',
                             'message': (
                                 f'数据更新完成，共更新 {total_saved} 条记录，'
                                 f'处理了 {len(processed_dates)} 个交易日。'
                                 f'{cleanup_result["message"] if "message" in cleanup_result else ""}'
-                            )
+                            ),
+                            'total_saved': total_saved  # 直接返回 total_saved
                         }
-                        
-                        if result['status'] == 'success':
-                            return {
-                                'status': 'success',
-                                'message': result['message'],
-                                'total_saved': total_saved  # 添加保存的记录数
-                            }
-                        else:
-                            return {
-                                'status': 'failed',
-                                'message': '没有获取到任何有效数据'
-                            }
                     else:
                         return {
                             'status': 'failed',
