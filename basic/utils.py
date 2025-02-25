@@ -389,6 +389,7 @@ class StockDataFetcher:
         """更新所有股票的日线数据"""
         try:
             batch_size = 500
+            total_saved = 0  # 在这里初始化 total_saved
             
             if trade_date:
                 # 1. 转换日期格式
@@ -468,12 +469,11 @@ class StockDataFetcher:
                         # 6. 清理旧数据
                         cleanup_result = self.cleanup_old_data()
                         
-                        # 修改这部分的返回逻辑
                         if total_saved > 0:
                             return {
                                 'status': 'success',
                                 'message': f'更新完成: {total_saved}/{total_records} 条记录',
-                                'total_saved': total_saved  # 直接返回 total_saved
+                                'total_saved': total_saved
                             }
                         else:
                             return {
