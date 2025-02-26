@@ -28,5 +28,7 @@ urlpatterns = [
     path('update-daily-data/', StockDailyDataUpdateView.as_view(), name='update-daily-data'),
     # 添加新的合并后的路由
     path('stock-pattern/', StockPatternView.as_view(), name='stock-pattern'),
+    # 策略统计
+    path('strategy-stats/', ManualStrategyAnalysisView.as_view(), name='strategy-stats'),
 ]
 

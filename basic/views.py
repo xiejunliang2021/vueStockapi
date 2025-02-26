@@ -27,58 +27,152 @@ class CodeRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'ts_code'
 
 class ManualStrategyAnalysisView(APIView):
-    """手动策略分析视图
+    """手动策略分析视图"""
     
-    提供手动触发策略分析的API接口
-    
-    接口说明：
-    POST /api/manual-analysis/
-    
-    请求参数：
-    - start_date: 开始日期（YYYY-MM-DD）
-    - end_date: 结束日期（YYYY-MM-DD）
-    - stock_code: 股票代码
-    
-    返回数据：
-    - message: 处理结果说明
-    - signals_count: 生成的信号数量
-    
-    错误处理：
-    - 400: 日期格式无效
-    - 500: 服务器处理错误
-    """
-    def post(self, request):
-        start_date = request.data.get('start_date')
-        end_date = request.data.get('end_date')
-        stock_code = request.data.get('stock_code')
-
+    def analyze_signals(self, start_date, end_date, stock_code=None):
+        """分析策略信号"""
         try:
-            # 验证日期格式
-            start_date = datetime.strptime(start_date, '%Y-%m-%d')
-            end_date = datetime.strptime(end_date, '%Y-%m-%d')
-
-            # 检查是否已有数据
-            existing_signals = PolicyDetails.objects.filter(
-                stock__ts_code=stock_code,
-                date__range=[start_date, end_date]
-            ).exists()
-
-            if not existing_signals:
-                strategy = ContinuousLimitStrategy()
-                signals = strategy.analyze_stock(
-                    stock_code,
-                    start_date.strftime('%Y%m%d'),
-                    end_date.strftime('%Y%m%d')
-                )
-                strategy.save_signals(signals)
-                return Response({'message': '策略分析完成', 'signals_count': len(signals)})
-            else:
-                return Response({'message': '该时间段的数据已存在'})
-
-        except ValueError:
-            return Response({'error': '日期格式无效'}, status=status.HTTP_400_BAD_REQUEST)
+            # 初始化计数器
+            stats = {
+                'first_buy_success': 0,  # 第一买点成功次数
+                'second_buy_success': 0,  # 第二买点成功次数
+                'failed': 0,             # 失败次数
+                'total': 0               # 总信号数
+            }
+            
+            # 获取策略数据
+            signals_query = PolicyDetails.objects.filter(
+                date__range=[start_date, end_date],
+                current_status='L'  # 只分析进行中的信号
+            ).select_related('stock')
+            
+            if stock_code:
+                signals_query = signals_query.filter(stock__ts_code=stock_code)
+            
+            # 遍历每个信号
+            for signal in signals_query:
+                stats['total'] += 1
+                
+                # 获取信号日期之后的日线数据
+                daily_data = StockDailyData.objects.filter(
+                    stock=signal.stock,
+                    trade_date__gt=signal.date
+                ).order_by('trade_date')
+                
+                first_buy_point = float(signal.first_buy_point)
+                first_stop_loss = first_buy_point * 0.9  # 第一买点止损价
+                second_stop_loss = first_buy_point * 0.8  # 第二买点止损价
+                
+                for day_data in daily_data:
+                    low_price = float(day_data.low)
+                    high_price = float(day_data.high)
+                    
+                    # 第一种情况：第一买点成功
+                    if low_price <= first_buy_point:
+                        holding_price = first_buy_point
+                        # 检查后续数据
+                        success = False
+                        for next_day in daily_data.filter(trade_date__gt=day_data.trade_date):
+                            next_low = float(next_day.low)
+                            next_high = float(next_day.high)
+                            if next_low > first_stop_loss and next_high > holding_price * 1.075:
+                                success = True
+                                break
+                            elif next_low <= second_stop_loss:
+                                success = False
+                                break
+                        
+                        if success:
+                            signal.current_status = 'S'
+                            signal.holding_price = holding_price
+                            signal.save()
+                            stats['first_buy_success'] += 1
+                        else:
+                            signal.current_status = 'F'
+                            signal.holding_price = holding_price
+                            signal.save()
+                            stats['failed'] += 1
+                        break
+                    
+                    # 第二种情况：第二买点成功
+                    elif low_price <= first_stop_loss and low_price > second_stop_loss:
+                        holding_price = (first_buy_point + first_stop_loss) / 2
+                        # 检查后续数据
+                        success = False
+                        for next_day in daily_data.filter(trade_date__gt=day_data.trade_date):
+                            if float(next_day.high) >= holding_price * 1.075:
+                                success = True
+                                break
+                            elif float(next_day.low) <= second_stop_loss:
+                                success = False
+                                break
+                        
+                        if success:
+                            signal.current_status = 'S'
+                            signal.holding_price = holding_price
+                            signal.save()
+                            stats['second_buy_success'] += 1
+                        else:
+                            signal.current_status = 'F'
+                            signal.holding_price = holding_price
+                            signal.save()
+                            stats['failed'] += 1
+                        break
+                    
+                    # 第三种情况：失败
+                    elif low_price <= second_stop_loss:
+                        signal.current_status = 'F'
+                        signal.holding_price = second_stop_loss
+                        signal.save()
+                        stats['failed'] += 1
+                        break
+            
+            return stats
+            
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            raise Exception(f"策略分析失败: {str(e)}")
+
+    def post(self, request):
+        try:
+            start_date = request.data.get('start_date')
+            end_date = request.data.get('end_date')
+            stock_code = request.data.get('stock_code')  # 可选参数
+
+            # 验证日期格式
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': '日期格式无效，请使用 YYYY-MM-DD 格式'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 分析策略
+            stats = self.analyze_signals(start_date, end_date, stock_code)
+            
+            # 计算成功率
+            total_signals = stats['total']
+            total_success = stats['first_buy_success'] + stats['second_buy_success']
+            success_rate = (total_success / total_signals * 100) if total_signals > 0 else 0
+            
+            return Response({
+                'status': 'success',
+                'message': '策略分析完成',
+                'data': {
+                    'total_signals': total_signals,
+                    'first_buy_success': stats['first_buy_success'],
+                    'second_buy_success': stats['second_buy_success'],
+                    'failed': stats['failed'],
+                    'success_rate': f"{success_rate:.2f}%"
+                }
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class TradingCalendarListCreateView(generics.ListCreateAPIView):
     """交易日历列表和创建视图"""
