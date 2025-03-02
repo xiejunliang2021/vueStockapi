@@ -19,6 +19,10 @@ class PolicyDetails(models.Model):
     - holding_profit: 持仓盈利百分比，当前持仓的盈利情况
     - holding_price: 实际持仓价格，策略执行时的实际买入价格
     - current_status: 当前策略状态（S-成功，F-失败，L-进行中）
+    - first_buy_time: 第一买点时间
+    - second_buy_time: 第二买点时间
+    - take_profit_time: 止盈时间
+    - stop_loss_time: 止损时间
     - created_at: 记录创建时间
     - updated_at: 记录更新时间
     """
@@ -71,6 +75,26 @@ class PolicyDetails(models.Model):
         choices=STATUS_CHOICES, 
         default='L', 
         verbose_name="当前状态"
+    )
+    first_buy_time = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="第一买点时间"
+    )
+    second_buy_time = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="第二买点时间"
+    )
+    take_profit_time = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="止盈时间"
+    )
+    stop_loss_time = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="止损时间"
     )
     created_at = models.DateTimeField(
         default=timezone.now,
