@@ -272,6 +272,3 @@ CORS_ORIGIN_ALLOW_ALL = False
 
 # 是否允许请求中包含通配符
 CORS_ALLOW_WILDCARDS = False
-
-# 替换现有的 CORS 响应头而不是添加它们
-CORS_REPLACE_HTTPS_REFERER = False
