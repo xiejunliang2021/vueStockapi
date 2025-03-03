@@ -754,7 +754,7 @@ class StrategyStatsView(generics.ListCreateAPIView):
                 'first_buy_success': stats['first_buy_success'],
                 'second_buy_success': stats['second_buy_success'],
                 'failed_signals': stats['failed'],
-                'success_rate': (stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100 if stats['total'] > 0 else 0),
+                'success_rate': round((stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100, 2) if stats['total'] > 0 else 0.00,
                 'avg_hold_days': stats['avg_hold_days'],
                 'max_drawdown': stats['max_drawdown'],
                 'profit_0_3': stats['profit_distribution']['0-3%'],
