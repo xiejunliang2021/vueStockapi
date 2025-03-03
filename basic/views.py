@@ -8,6 +8,7 @@ from rest_framework import status
 from .analysis import ContinuousLimitStrategy
 from datetime import datetime
 from .utils import StockDataFetcher
+from django.db import models
 
 class PolicyDetailsListCreateView(generics.ListCreateAPIView):
     """策略详情列表和创建视图"""
@@ -69,7 +70,15 @@ class ManualStrategyAnalysisView(APIView):
             # 初始化查询集
             signals_query = PolicyDetails.objects.filter(
                 current_status='L'  # 只分析进行中的信号
-            ).select_related('stock')
+            ).select_related('stock').prefetch_related(
+                models.Prefetch(
+                    'stock__stockdailydata_set',
+                    queryset=StockDailyData.objects.filter(
+                        trade_date__range=[start_date, end_date]
+                    ).order_by('trade_date'),
+                    to_attr='cached_daily_data'
+                )
+            )
             
             # 如果提供了股票代码，进行过滤
             if stock_code:
@@ -80,15 +89,37 @@ class ManualStrategyAnalysisView(APIView):
             if start_date and end_date:
                 signals_query = signals_query.filter(date__range=[start_date, end_date])
             
+            # 添加日志
+            print(f"Analyzing signals for date range: {start_date} to {end_date}")
+            print(f"Initial query count: {signals_query.count()}")
+            
+            # 验证是否有数据可分析
+            if not signals_query.exists():
+                print("No signals found for analysis")
+                return {
+                    'first_buy_success': 0,
+                    'second_buy_success': 0,
+                    'failed': 0,
+                    'total': 0,
+                    'avg_hold_days': 0,
+                    'max_drawdown': 0,
+                    'profit_distribution': {
+                        '0-3%': 0, '3-5%': 0, '5-7%': 0,
+                        '7-10%': 0, '>10%': 0
+                    },
+                    'total_hold_days': 0
+                }
+            
             # 遍历每个策略记录
             for signal in signals_query:
+                print(f"Processing signal for stock: {signal.stock.ts_code}")
+                
                 stats['total'] += 1
                 
                 # 获取该股票在策略生成日期之后的所有日线数据
-                daily_data = StockDailyData.objects.filter(
-                    stock=signal.stock,
-                    trade_date__gt=signal.date
-                ).order_by('trade_date')
+                daily_data = signal.cached_daily_data
+                
+                print(f"Found {daily_data.count()} daily records for {signal.stock.ts_code}")
                 
                 # 获取策略参数
                 first_buy_point = float(signal.first_buy_point)
@@ -786,14 +817,19 @@ class StrategyStatsView(generics.ListCreateAPIView):
             serializer.is_valid(raise_exception=True)
             self.perform_create(serializer)
             
-            return Response(
-                {
-                    'status': 'success',
-                    'message': '策略统计记录创建成功',
-                    'data': serializer.data
-                },
-                status=status.HTTP_201_CREATED
-            )
+            # 添加更多统计信息到响应
+            response_data = {
+                'status': 'success',
+                'message': '策略统计记录创建成功',
+                'data': serializer.data,
+                'analysis_info': {
+                    'date_range': f"{start_date} to {end_date}",
+                    'analyzed_stocks': stats.get('analyzed_stocks', 0),
+                    'total_signals': stats.get('total', 0)
+                }
+            }
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
             return Response(
