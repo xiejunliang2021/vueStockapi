@@ -743,13 +743,24 @@ class StrategyStatsView(generics.ListCreateAPIView):
             # 获取或创建策略分析视图实例
             analysis_view = ManualStrategyAnalysisView()
             
+            # 获取股票对象
+            stock = None
+            if stock_code:
+                try:
+                    stock = Code.objects.get(ts_code=stock_code)
+                except Code.DoesNotExist:
+                    return Response(
+                        {'error': f'股票代码 {stock_code} 不存在'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
             # 执行策略分析
             stats = analysis_view.analyze_signals(start_date, end_date, stock_code)
             
             # 准备统计数据
             stats_data = {
                 'date': end_date,
-                'stock': stock_code,
+                'stock': stock.pk if stock else None,  # 使用股票对象的主键
                 'total_signals': stats['total'],
                 'first_buy_success': stats['first_buy_success'],
                 'second_buy_success': stats['second_buy_success'],

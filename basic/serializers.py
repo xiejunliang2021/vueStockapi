@@ -63,3 +63,8 @@ class StrategyStatsSerializer(serializers.ModelSerializer):
             'profit_7_10', 'profit_above_10', 'created_at'
         ]
         read_only_fields = ['created_at']
+
+    def validate_stock(self, value):
+        if value and not Code.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("指定的股票不存在")
+        return value
