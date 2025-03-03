@@ -281,7 +281,7 @@ class StrategyStats(models.Model):
         verbose_name="平均持仓天数"
     )
     max_drawdown = models.DecimalField(
-        max_digits=10,
+        max_digits=20,
         decimal_places=2,
         verbose_name="最大回撤"
     )

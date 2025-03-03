@@ -143,13 +143,13 @@ class ManualStrategyAnalysisView(APIView):
                             # 更新统计数据
                             stats['first_buy_success'] += 1
                             stats['total_hold_days'] += hold_days
-                            profit_rate = (take_profit_point - first_buy_point) / first_buy_point * 100
+                            profit_rate = round((take_profit_point - first_buy_point) / first_buy_point * 100, 2)
                             self._update_profit_distribution(stats, profit_rate)
                             break
                         
                         # 成功条件2：触及第二买点但未触及止损点，且达到均价上涨7.5%
                         elif second_buy_point >= low_price > stop_loss_point:
-                            avg_price = (first_buy_point + second_buy_point) / 2
+                            avg_price = round((first_buy_point + second_buy_point) / 2, 2)
                             if high_price > avg_price * 1.075:
                                 signal.current_status = 'S'
                                 signal.take_profit_time = day_data.trade_date
@@ -159,7 +159,7 @@ class ManualStrategyAnalysisView(APIView):
                                 # 更新统计数据
                                 stats['second_buy_success'] += 1
                                 stats['total_hold_days'] += hold_days
-                                profit_rate = (high_price - avg_price) / avg_price * 100
+                                profit_rate = round((high_price - avg_price) / avg_price * 100, 2)
                                 self._update_profit_distribution(stats, profit_rate)
                                 break
                         
@@ -177,12 +177,12 @@ class ManualStrategyAnalysisView(APIView):
                 
                 # 计算最大回撤
                 if max_price > 0 and min_price < float('inf'):
-                    drawdown = (max_price - min_price) / max_price * 100
+                    drawdown = round((max_price - min_price) / max_price * 100, 2)
                     stats['max_drawdown'] = max(stats['max_drawdown'], drawdown)
             
             # 计算平均持仓天数
             if stats['total'] > 0:
-                stats['avg_hold_days'] = stats['total_hold_days'] / stats['total']
+                stats['avg_hold_days'] = round(stats['total_hold_days'] / stats['total'], 2)
             
             return stats
             
@@ -223,7 +223,7 @@ class ManualStrategyAnalysisView(APIView):
             
             # 计算成功率
             total_success = stats['first_buy_success'] + stats['second_buy_success']
-            success_rate = (total_success / stats['total'] * 100) if stats['total'] > 0 else 0
+            success_rate = round((total_success / stats['total'] * 100), 2) if stats['total'] > 0 else 0.00
             
             # 创建统计记录
             StrategyStats.objects.create(
@@ -754,7 +754,7 @@ class StrategyStatsView(generics.ListCreateAPIView):
                 'first_buy_success': stats['first_buy_success'],
                 'second_buy_success': stats['second_buy_success'],
                 'failed_signals': stats['failed'],
-                'success_rate': (stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100 if stats['total'] > 0 else 0,
+                'success_rate': (stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100 if stats['total'] > 0 else 0),
                 'avg_hold_days': stats['avg_hold_days'],
                 'max_drawdown': stats['max_drawdown'],
                 'profit_0_3': stats['profit_distribution']['0-3%'],
