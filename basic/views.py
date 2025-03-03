@@ -66,18 +66,19 @@ class ManualStrategyAnalysisView(APIView):
                 'total_hold_days': 0,     # 总持仓天数（用于计算平均值）
             }
             
-            # 获取所有进行中的策略记录
+            # 初始化查询集
             signals_query = PolicyDetails.objects.filter(
                 current_status='L'  # 只分析进行中的信号
             ).select_related('stock')
             
+            # 如果提供了股票代码，进行过滤
+            if stock_code:
+                print(f"Filtering signals for stock: {stock_code}")  # 添加日志
+                signals_query = signals_query.filter(stock__ts_code=stock_code)
+            
             # 如果提供了日期范围，进行过滤
             if start_date and end_date:
                 signals_query = signals_query.filter(date__range=[start_date, end_date])
-            
-            # 如果提供了股票代码，进行过滤
-            if stock_code:
-                signals_query = signals_query.filter(stock__ts_code=stock_code)
             
             # 遍历每个策略记录
             for signal in signals_query:
@@ -730,6 +731,9 @@ class StrategyStatsView(generics.ListCreateAPIView):
             end_date = request.data.get('end_date')
             stock_code = request.data.get('stock_code')  # 可选参数
             
+            print(f"Received request data: {request.data}")  # 添加日志
+            print(f"Stock code: {stock_code}")  # 添加日志
+            
             # 验证日期格式
             try:
                 start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
@@ -748,7 +752,9 @@ class StrategyStatsView(generics.ListCreateAPIView):
             if stock_code:
                 try:
                     stock = Code.objects.get(ts_code=stock_code)
+                    print(f"Found stock: {stock.name} ({stock.ts_code})")  # 添加日志
                 except Code.DoesNotExist:
+                    print(f"Stock not found: {stock_code}")  # 添加日志
                     return Response(
                         {'error': f'股票代码 {stock_code} 不存在'},
                         status=status.HTTP_400_BAD_REQUEST
