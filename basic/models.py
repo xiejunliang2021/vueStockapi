@@ -236,4 +236,76 @@ class TradingCalendar(models.Model):
         return f"{self.date} - {'交易日' if self.is_trading_day else '非交易日'}"
 
 
+class StrategyStats(models.Model):
+    """策略统计指标模型
+    
+    用于记录策略分析的统计结果
+    
+    字段说明：
+    - date: 统计日期
+    - stock: 关联的股票代码（可选）
+    - total_signals: 总信号数
+    - first_buy_success: 第一买点成功数
+    - second_buy_success: 第二买点成功数
+    - failed_signals: 失败信号数
+    - success_rate: 成功率
+    - avg_hold_days: 平均持仓天数
+    - max_drawdown: 最大回撤
+    - profit_0_3: 0-3%盈利数量
+    - profit_3_5: 3-5%盈利数量
+    - profit_5_7: 5-7%盈利数量
+    - profit_7_10: 7-10%盈利数量
+    - profit_above_10: 10%以上盈利数量
+    """
+    
+    date = models.DateField(verbose_name="统计日期")
+    stock = models.ForeignKey(
+        'Code',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="股票"
+    )
+    total_signals = models.IntegerField(verbose_name="总信号数")
+    first_buy_success = models.IntegerField(verbose_name="第一买点成功数")
+    second_buy_success = models.IntegerField(verbose_name="第二买点成功数")
+    failed_signals = models.IntegerField(verbose_name="失败信号数")
+    success_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        verbose_name="成功率"
+    )
+    avg_hold_days = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        verbose_name="平均持仓天数"
+    )
+    max_drawdown = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        verbose_name="最大回撤"
+    )
+    profit_0_3 = models.IntegerField(verbose_name="0-3%盈利数量")
+    profit_3_5 = models.IntegerField(verbose_name="3-5%盈利数量")
+    profit_5_7 = models.IntegerField(verbose_name="5-7%盈利数量")
+    profit_7_10 = models.IntegerField(verbose_name="7-10%盈利数量")
+    profit_above_10 = models.IntegerField(verbose_name="10%以上盈利数量")
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="创建时间"
+    )
+
+    class Meta:
+        verbose_name = "策略统计"
+        verbose_name_plural = "策略统计"
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['-date']),
+            models.Index(fields=['success_rate']),
+        ]
+
+    def __str__(self):
+        return f"{self.date} - {'全市场' if not self.stock else self.stock.name}"
+
+
 

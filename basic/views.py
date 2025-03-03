@@ -1,6 +1,6 @@
 from rest_framework import generics
-from .models import PolicyDetails, Code, TradingCalendar, StockDailyData
-from .serializers import PolicyDetailsSerializer, CodeSerializer, TradingCalendarSerializer, StockPatternAnalysisSerializer, StockPatternResultSerializer
+from .models import PolicyDetails, Code, TradingCalendar, StockDailyData, StrategyStats
+from .serializers import PolicyDetailsSerializer, CodeSerializer, TradingCalendarSerializer, StockPatternAnalysisSerializer, StockPatternResultSerializer, StrategyStatsSerializer
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -30,14 +30,38 @@ class ManualStrategyAnalysisView(APIView):
     """手动策略分析视图"""
     
     def analyze_signals(self, start_date, end_date, stock_code=None):
-        """分析策略信号"""
+        """分析策略信号
+        
+        策略逻辑：
+        1. 首次触及第一买点时记录时间
+        2. 从第一买点时间开始，检查后续100个交易日内：
+           - 如果期间最低价没有触及第二买点，且出现止盈 -> 第一买点成功
+           - 如果期间最低价触及第二买点但未触及止损，且出现7.5%涨幅 -> 第二买点成功
+           - 如果期间最低价触及止损价 -> 失败
+           
+        统计指标：
+        - 成功率统计
+        - 平均持仓时间
+        - 最大回撤
+        - 盈利分布
+        """
         try:
-            # 初始化计数器
+            # 初始化统计指标
             stats = {
-                'first_buy_success': 0,  # 第一买点成功次数
+                'first_buy_success': 0,   # 第一买点成功次数
                 'second_buy_success': 0,  # 第二买点成功次数
-                'failed': 0,             # 失败次数
-                'total': 0               # 总信号数
+                'failed': 0,              # 失败次数
+                'total': 0,               # 总信号数
+                'avg_hold_days': 0,       # 平均持仓天数
+                'max_drawdown': 0,        # 最大回撤
+                'profit_distribution': {   # 盈利分布
+                    '0-3%': 0,
+                    '3-5%': 0,
+                    '5-7%': 0,
+                    '7-10%': 0,
+                    '>10%': 0
+                },
+                'total_hold_days': 0,     # 总持仓天数（用于计算平均值）
             }
             
             # 获取策略数据
@@ -59,79 +83,164 @@ class ManualStrategyAnalysisView(APIView):
                     trade_date__gt=signal.date
                 ).order_by('trade_date')
                 
+                # 获取策略参数
                 first_buy_point = float(signal.first_buy_point)
-                first_stop_loss = first_buy_point * 0.9  # 第一买点止损价
-                second_stop_loss = first_buy_point * 0.8  # 第二买点止损价
+                second_buy_point = float(signal.second_buy_point) if signal.second_buy_point else first_buy_point * 0.9
+                stop_loss_point = float(signal.stop_loss_point)
+                take_profit_point = float(signal.take_profit_point)
+                
+                first_buy_triggered = False
+                first_buy_date = None
+                max_price = 0  # 用于计算最大回撤
+                min_price = float('inf')  # 用于计算最大回撤
                 
                 for day_data in daily_data:
                     low_price = float(day_data.low)
                     high_price = float(day_data.high)
                     
-                    # 第一种情况：第一买点成功
-                    if low_price <= first_buy_point:
-                        holding_price = first_buy_point
-                        # 检查后续数据
-                        success = False
-                        for next_day in daily_data.filter(trade_date__gt=day_data.trade_date):
-                            next_low = float(next_day.low)
-                            next_high = float(next_day.high)
-                            if next_low > first_stop_loss and next_high > holding_price * 1.075:
-                                success = True
-                                break
-                            elif next_low <= second_stop_loss:
-                                success = False
-                                break
-                        
-                        if success:
-                            signal.current_status = 'S'
-                            signal.holding_price = holding_price
-                            signal.save()
-                            stats['first_buy_success'] += 1
-                        else:
-                            signal.current_status = 'F'
-                            signal.holding_price = holding_price
-                            signal.save()
-                            stats['failed'] += 1
-                        break
-                    
-                    # 第二种情况：第二买点成功
-                    elif low_price <= first_stop_loss and low_price > second_stop_loss:
-                        holding_price = (first_buy_point + first_stop_loss) / 2
-                        # 检查后续数据
-                        success = False
-                        for next_day in daily_data.filter(trade_date__gt=day_data.trade_date):
-                            if float(next_day.high) >= holding_price * 1.075:
-                                success = True
-                                break
-                            elif float(next_day.low) <= second_stop_loss:
-                                success = False
-                                break
-                        
-                        if success:
-                            signal.current_status = 'S'
-                            signal.holding_price = holding_price
-                            signal.save()
-                            stats['second_buy_success'] += 1
-                        else:
-                            signal.current_status = 'F'
-                            signal.holding_price = holding_price
-                            signal.save()
-                            stats['failed'] += 1
-                        break
-                    
-                    # 第三种情况：失败
-                    elif low_price <= second_stop_loss:
-                        signal.current_status = 'F'
-                        signal.holding_price = second_stop_loss
+                    # 检查是否触及第一买点
+                    if not first_buy_triggered and low_price <= first_buy_point:
+                        first_buy_triggered = True
+                        first_buy_date = day_data.trade_date
+                        signal.first_buy_time = first_buy_date
                         signal.save()
-                        stats['failed'] += 1
-                        break
+                        continue
+                    
+                    # 只有在触发第一买点后才进行后续判断
+                    if first_buy_triggered:
+                        # 更新最大最小价格（用于计算回撤）
+                        max_price = max(max_price, high_price)
+                        min_price = min(min_price, low_price)
+                        
+                        # 计算当前持仓天数
+                        hold_days = (day_data.trade_date - first_buy_date).days
+                        
+                        # 只分析100个交易日内的数据
+                        if hold_days > 100:
+                            # 超过100个交易日仍未触发任何条件，标记为失败
+                            signal.current_status = 'F'
+                            signal.stop_loss_time = day_data.trade_date
+                            signal.holding_price = stop_loss_point
+                            signal.save()
+                            stats['failed'] += 1
+                            stats['total_hold_days'] += hold_days
+                            break
+                        
+                        # 成功条件1：没有跌破第二买点且达到止盈点
+                        if low_price > second_buy_point and high_price >= take_profit_point:
+                            signal.current_status = 'S'
+                            signal.take_profit_time = day_data.trade_date
+                            signal.holding_price = first_buy_point
+                            signal.save()
+                            
+                            # 更新统计数据
+                            stats['first_buy_success'] += 1
+                            stats['total_hold_days'] += hold_days
+                            profit_rate = (take_profit_point - first_buy_point) / first_buy_point * 100
+                            self._update_profit_distribution(stats, profit_rate)
+                            break
+                        
+                        # 成功条件2：触及第二买点但未触及止损点，且达到均价上涨7.5%
+                        elif second_buy_point >= low_price > stop_loss_point:
+                            avg_price = (first_buy_point + second_buy_point) / 2
+                            if high_price > avg_price * 1.075:
+                                signal.current_status = 'S'
+                                signal.take_profit_time = day_data.trade_date
+                                signal.holding_price = avg_price
+                                signal.save()
+                                
+                                # 更新统计数据
+                                stats['second_buy_success'] += 1
+                                stats['total_hold_days'] += hold_days
+                                profit_rate = (high_price - avg_price) / avg_price * 100
+                                self._update_profit_distribution(stats, profit_rate)
+                                break
+                        
+                        # 失败条件：触及止损点
+                        elif low_price <= stop_loss_point:
+                            signal.current_status = 'F'
+                            signal.stop_loss_time = day_data.trade_date
+                            signal.holding_price = stop_loss_point
+                            signal.save()
+                            
+                            # 更新统计数据
+                            stats['failed'] += 1
+                            stats['total_hold_days'] += hold_days
+                            break
+                
+                # 计算最大回撤
+                if max_price > 0 and min_price < float('inf'):
+                    drawdown = (max_price - min_price) / max_price * 100
+                    stats['max_drawdown'] = max(stats['max_drawdown'], drawdown)
+            
+            # 计算平均持仓天数
+            if stats['total'] > 0:
+                stats['avg_hold_days'] = stats['total_hold_days'] / stats['total']
             
             return stats
             
         except Exception as e:
             raise Exception(f"策略分析失败: {str(e)}")
+    
+    def _update_profit_distribution(self, stats, profit_rate):
+        """更新盈利分布统计
+        
+        Args:
+            stats: 统计数据字典
+            profit_rate: 盈利率（百分比）
+        """
+        if profit_rate <= 3:
+            stats['profit_distribution']['0-3%'] += 1
+        elif profit_rate <= 5:
+            stats['profit_distribution']['3-5%'] += 1
+        elif profit_rate <= 7:
+            stats['profit_distribution']['5-7%'] += 1
+        elif profit_rate <= 10:
+            stats['profit_distribution']['7-10%'] += 1
+        else:
+            stats['profit_distribution']['>10%'] += 1
 
+    def _save_stats(self, stats, end_date, stock_code=None):
+        """保存策略统计结果
+        
+        Args:
+            stats: 统计结果字典
+            end_date: 统计结束日期
+            stock_code: 可选的股票代码
+        """
+        try:
+            # 如果提供了股票代码，获取股票对象
+            stock = None
+            if stock_code:
+                stock = Code.objects.get(ts_code=stock_code)
+            
+            # 计算成功率
+            total_success = stats['first_buy_success'] + stats['second_buy_success']
+            success_rate = (total_success / stats['total'] * 100) if stats['total'] > 0 else 0
+            
+            # 创建统计记录
+            StrategyStats.objects.create(
+                date=end_date,
+                stock=stock,
+                total_signals=stats['total'],
+                first_buy_success=stats['first_buy_success'],
+                second_buy_success=stats['second_buy_success'],
+                failed_signals=stats['failed'],
+                success_rate=success_rate,
+                avg_hold_days=stats['avg_hold_days'],
+                max_drawdown=stats['max_drawdown'],
+                profit_0_3=stats['profit_distribution']['0-3%'],
+                profit_3_5=stats['profit_distribution']['3-5%'],
+                profit_5_7=stats['profit_distribution']['5-7%'],
+                profit_7_10=stats['profit_distribution']['7-10%'],
+                profit_above_10=stats['profit_distribution']['>10%']
+            )
+            
+            return True
+        except Exception as e:
+            print(f"保存统计数据失败: {str(e)}")
+            return False
+    
     def post(self, request):
         try:
             start_date = request.data.get('start_date')
@@ -151,6 +260,9 @@ class ManualStrategyAnalysisView(APIView):
             # 分析策略
             stats = self.analyze_signals(start_date, end_date, stock_code)
             
+            # 保存统计结果
+            stats_saved = self._save_stats(stats, end_date, stock_code)
+            
             # 计算成功率
             total_signals = stats['total']
             total_success = stats['first_buy_success'] + stats['second_buy_success']
@@ -158,13 +270,14 @@ class ManualStrategyAnalysisView(APIView):
             
             return Response({
                 'status': 'success',
-                'message': '策略分析完成',
+                'message': '策略分析完成' + (' 并保存统计数据' if stats_saved else ''),
                 'data': {
                     'total_signals': total_signals,
                     'first_buy_success': stats['first_buy_success'],
                     'second_buy_success': stats['second_buy_success'],
                     'failed': stats['failed'],
-                    'success_rate': f"{success_rate:.2f}%"
+                    'success_rate': f"{success_rate:.2f}%",
+                    'stats_saved': stats_saved
                 }
             })
 
@@ -570,6 +683,97 @@ class StockPatternView(APIView):
         except Exception as e:
             return Response(
                 {'status': 'error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class StrategyStatsView(generics.ListCreateAPIView):
+    """策略统计视图
+    
+    GET: 获取策略统计列表，支持以下过滤：
+    - date: 具体日期
+    - start_date & end_date: 日期范围
+    - stock: 股票代码
+    
+    POST: 创建新的策略统计记录
+    """
+    queryset = StrategyStats.objects.all()
+    serializer_class = StrategyStatsSerializer
+    filterset_fields = ['date', 'stock']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+            
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        """创建策略统计记录
+        
+        自动从analyze_signals的结果中创建统计记录
+        """
+        try:
+            # 获取分析日期范围
+            start_date = request.data.get('start_date')
+            end_date = request.data.get('end_date')
+            stock_code = request.data.get('stock_code')  # 可选参数
+            
+            # 验证日期格式
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': '日期格式无效，请使用 YYYY-MM-DD 格式'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 获取或创建策略分析视图实例
+            analysis_view = ManualStrategyAnalysisView()
+            
+            # 执行策略分析
+            stats = analysis_view.analyze_signals(start_date, end_date, stock_code)
+            
+            # 准备统计数据
+            stats_data = {
+                'date': end_date,
+                'stock': stock_code,
+                'total_signals': stats['total'],
+                'first_buy_success': stats['first_buy_success'],
+                'second_buy_success': stats['second_buy_success'],
+                'failed_signals': stats['failed'],
+                'success_rate': (stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100 if stats['total'] > 0 else 0,
+                'avg_hold_days': stats['avg_hold_days'],
+                'max_drawdown': stats['max_drawdown'],
+                'profit_0_3': stats['profit_distribution']['0-3%'],
+                'profit_3_5': stats['profit_distribution']['3-5%'],
+                'profit_5_7': stats['profit_distribution']['5-7%'],
+                'profit_7_10': stats['profit_distribution']['7-10%'],
+                'profit_above_10': stats['profit_distribution']['>10%']
+            }
+            
+            # 创建序列化器
+            serializer = self.get_serializer(data=stats_data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            
+            return Response(
+                {
+                    'status': 'success',
+                    'message': '策略统计记录创建成功',
+                    'data': serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

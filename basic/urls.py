@@ -4,7 +4,7 @@ from .views import (
     CodeRetrieveUpdateDeleteView, ManualStrategyAnalysisView,
     TradingCalendarListCreateView, TradingCalendarDetailView,
     CheckTradingDayView, StockDailyDataUpdateView,
-    StockPatternView
+    StockPatternView, StrategyStatsView
 )
 
 urlpatterns = [
@@ -22,13 +22,11 @@ urlpatterns = [
     path('trading-calendar/<str:date>/', TradingCalendarDetailView.as_view(), name='trading-calendar-detail'),
     # 检查交易日
     path('check-trading-day/', CheckTradingDayView.as_view(), name='check-trading-day'),
-    # 更新交易日历
-    path('update-trading-calendar/', TradingCalendarListCreateView.as_view(), name='update-trading-calendar'),
     # 更新股票日线数据
     path('update-daily-data/', StockDailyDataUpdateView.as_view(), name='update-daily-data'),
-    # 添加新的合并后的路由
+    # 股票模式分析
     path('stock-pattern/', StockPatternView.as_view(), name='stock-pattern'),
     # 策略统计
-    path('strategy-stats/', ManualStrategyAnalysisView.as_view(), name='strategy-stats'),
+    path('strategy-stats/', StrategyStatsView.as_view(), name='strategy-stats'),
 ]
 

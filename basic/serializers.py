@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import PolicyDetails, Code, TradingCalendar
+from .models import PolicyDetails, Code, TradingCalendar, StrategyStats
 from datetime import date
 
 class PolicyDetailsSerializer(serializers.ModelSerializer):
@@ -47,3 +47,19 @@ class StockPatternResultSerializer(serializers.Serializer):
     max_high = serializers.FloatField()
     min_low = serializers.FloatField()
     avg_price = serializers.FloatField()
+
+class StrategyStatsSerializer(serializers.ModelSerializer):
+    """策略统计序列化器"""
+    stock_name = serializers.CharField(source='stock.name', read_only=True)
+    stock_code = serializers.CharField(source='stock.ts_code', read_only=True)
+
+    class Meta:
+        model = StrategyStats
+        fields = [
+            'id', 'date', 'stock', 'stock_name', 'stock_code',
+            'total_signals', 'first_buy_success', 'second_buy_success',
+            'failed_signals', 'success_rate', 'avg_hold_days',
+            'max_drawdown', 'profit_0_3', 'profit_3_5', 'profit_5_7',
+            'profit_7_10', 'profit_above_10', 'created_at'
+        ]
+        read_only_fields = ['created_at']
