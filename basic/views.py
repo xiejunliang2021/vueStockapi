@@ -33,11 +33,13 @@ class ManualStrategyAnalysisView(APIView):
         """分析策略信号
         
         策略逻辑：
-        1. 首次触及第一买点时记录时间
-        2. 从第一买点时间开始，检查后续100个交易日内：
-           - 如果期间最低价没有触及第二买点，且出现止盈 -> 第一买点成功
-           - 如果期间最低价触及第二买点但未触及止损，且出现7.5%涨幅 -> 第二买点成功
-           - 如果期间最低价触及止损价 -> 失败
+        1. 获取所有状态为"进行中"的策略记录
+        2. 对每个策略记录：
+           a. 获取策略生成日期之后的日线数据
+           b. 从第一买点时间开始，检查后续100个交易日内：
+              - 如果期间最低价没有触及第二买点，且出现止盈 -> 第一买点成功
+              - 如果期间最低价触及第二买点但未触及止损，且出现7.5%涨幅 -> 第二买点成功
+              - 如果期间最低价触及止损价 -> 失败
            
         统计指标：
         - 成功率统计
@@ -64,20 +66,24 @@ class ManualStrategyAnalysisView(APIView):
                 'total_hold_days': 0,     # 总持仓天数（用于计算平均值）
             }
             
-            # 获取策略数据
+            # 获取所有进行中的策略记录
             signals_query = PolicyDetails.objects.filter(
-                date__range=[start_date, end_date],
                 current_status='L'  # 只分析进行中的信号
             ).select_related('stock')
             
+            # 如果提供了日期范围，进行过滤
+            if start_date and end_date:
+                signals_query = signals_query.filter(date__range=[start_date, end_date])
+            
+            # 如果提供了股票代码，进行过滤
             if stock_code:
                 signals_query = signals_query.filter(stock__ts_code=stock_code)
             
-            # 遍历每个信号
+            # 遍历每个策略记录
             for signal in signals_query:
                 stats['total'] += 1
                 
-                # 获取信号日期之后的日线数据
+                # 获取该股票在策略生成日期之后的所有日线数据
                 daily_data = StockDailyData.objects.filter(
                     stock=signal.stock,
                     trade_date__gt=signal.date
@@ -94,6 +100,7 @@ class ManualStrategyAnalysisView(APIView):
                 max_price = 0  # 用于计算最大回撤
                 min_price = float('inf')  # 用于计算最大回撤
                 
+                # 分析每一天的数据
                 for day_data in daily_data:
                     low_price = float(day_data.low)
                     high_price = float(day_data.high)
