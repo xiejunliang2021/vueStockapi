@@ -70,19 +70,11 @@ class ManualStrategyAnalysisView(APIView):
             # 初始化查询集
             signals_query = PolicyDetails.objects.filter(
                 current_status='L'  # 只分析进行中的信号
-            ).select_related('stock').prefetch_related(
-                models.Prefetch(
-                    'stock__stockdailydata_set',
-                    queryset=StockDailyData.objects.filter(
-                        trade_date__range=[start_date, end_date]
-                    ).order_by('trade_date'),
-                    to_attr='cached_daily_data'
-                )
-            )
+            ).select_related('stock')
             
             # 如果提供了股票代码，进行过滤
             if stock_code:
-                print(f"Filtering signals for stock: {stock_code}")  # 添加日志
+                print(f"Filtering signals for stock: {stock_code}")
                 signals_query = signals_query.filter(stock__ts_code=stock_code)
             
             # 如果提供了日期范围，进行过滤
@@ -117,9 +109,17 @@ class ManualStrategyAnalysisView(APIView):
                 stats['total'] += 1
                 
                 # 获取该股票在策略生成日期之后的所有日线数据
-                daily_data = signal.cached_daily_data
+                daily_data = StockDailyData.objects.filter(
+                    stock=signal.stock,
+                    trade_date__gt=signal.date,
+                    trade_date__lte=end_date  # 添加结束日期限制
+                ).order_by('trade_date')
                 
                 print(f"Found {daily_data.count()} daily records for {signal.stock.ts_code}")
+                
+                if not daily_data.exists():
+                    print(f"No daily data found for {signal.stock.ts_code}")
+                    continue
                 
                 # 获取策略参数
                 first_buy_point = float(signal.first_buy_point)
