@@ -271,17 +271,17 @@ class StrategyStats(models.Model):
     second_buy_success = models.IntegerField(verbose_name="第二买点成功数")
     failed_signals = models.IntegerField(verbose_name="失败信号数")
     success_rate = models.DecimalField(
-        max_digits=5,
+        max_digits=10,
         decimal_places=2,
         verbose_name="成功率"
     )
     avg_hold_days = models.DecimalField(
-        max_digits=5,
+        max_digits=10,
         decimal_places=2,
         verbose_name="平均持仓天数"
     )
     max_drawdown = models.DecimalField(
-        max_digits=5,
+        max_digits=10,
         decimal_places=2,
         verbose_name="最大回撤"
     )
