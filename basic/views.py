@@ -131,13 +131,13 @@ class ManualStrategyAnalysisView(APIView):
                 daily_data = StockDailyData.objects.filter(
                     stock=signal.stock,
                     trade_date__gt=signal.date,
-                    trade_date__lte=end_date  # 添加结束日期限制
+                    trade_date__lte=end_date
                 ).order_by('trade_date')
                 
                 daily_data_count = daily_data.count()
                 print(f"Found {daily_data_count} daily records for {signal.stock.ts_code}")
                 
-                if daily_data_count < 3:  # 至少需要3天的数据
+                if daily_data_count < 3:
                     print(f"Insufficient data for {signal.stock.ts_code}, skipping...")
                     continue
                 
@@ -147,15 +147,19 @@ class ManualStrategyAnalysisView(APIView):
                 stop_loss_point = float(signal.stop_loss_point)
                 
                 first_buy_triggered = False
+                second_buy_triggered = False
                 first_buy_date = None
-                max_price = 0  # 用于计算最大回撤
-                min_price = float('inf')  # 用于计算最大回撤
-                hold_days = 0  # 持仓天数
+                second_buy_date = None
+                max_price = 0
+                min_price = float('inf')
+                hold_days = 0
+                consecutive_stop_loss_days = 0  # 连续跌破止损价的天数
                 
                 # 分析每一天的数据
                 for day_data in daily_data:
                     low_price = float(day_data.low)
                     high_price = float(day_data.high)
+                    close_price = float(day_data.close)
                     
                     # 更新最大最小价格（用于计算回撤）
                     max_price = max(max_price, high_price)
@@ -183,7 +187,7 @@ class ManualStrategyAnalysisView(APIView):
                             stats['total_hold_days'] += hold_days
                             break
                         
-                        # 情况1：最高价达到买点一的1.075倍，且之前最低价未触及买点二
+                        # 情况1：最高价达到买点一的1.075倍
                         target_price_1 = first_buy_point * 1.075
                         if high_price >= target_price_1:
                             # 检查在达到最高价之前的最低价是否都大于买点二
@@ -204,40 +208,58 @@ class ManualStrategyAnalysisView(APIView):
                                 break
                         
                         # 情况2和3：价格触及买点二
-                        if low_price <= second_buy_point:
+                        if low_price <= second_buy_point and not second_buy_triggered:
+                            second_buy_triggered = True
+                            second_buy_date = day_data.trade_date
+                            signal.second_buy_time = second_buy_date
                             avg_price = round((first_buy_point + second_buy_point) / 2, 2)
                             target_price_2 = avg_price * 1.075
                             
-                            # 检查在触及买点二之前是否触及止损价
-                            previous_data = daily_data.filter(
-                                trade_date__gte=first_buy_date,
-                                trade_date__lt=day_data.trade_date
-                            )
+                            # 检查是否触及止损价
+                            if low_price <= stop_loss_point:
+                                consecutive_stop_loss_days = 1
                             
-                            # 检查是否有任何一天触及止损价
-                            hit_stop_loss = any(float(d.low) <= stop_loss_point for d in previous_data)
+                            # 检查在触及买点二之后的数据
+                            subsequent_data = daily_data.filter(
+                                trade_date__gt=day_data.trade_date
+                            ).order_by('trade_date')
                             
-                            if hit_stop_loss:
-                                # 情况3：触及止损，记录失败
-                                signal.current_status = 'F'
-                                signal.stop_loss_time = day_data.trade_date
-                                signal.holding_price = stop_loss_point
-                                signal.save()
+                            for next_day in subsequent_data:
+                                next_low = float(next_day.low)
+                                next_high = float(next_day.high)
+                                next_close = float(next_day.close)
                                 
-                                stats['failed'] += 1
-                                stats['total_hold_days'] += hold_days
-                                break
-                            elif high_price >= target_price_2:
-                                # 情况2：达到目标价格，记录成功
-                                signal.current_status = 'S'
-                                signal.take_profit_time = day_data.trade_date
-                                signal.holding_price = avg_price
-                                signal.save()
+                                # 检查是否连续跌破止损价
+                                if next_close <= stop_loss_point:
+                                    consecutive_stop_loss_days += 1
+                                else:
+                                    consecutive_stop_loss_days = 0
                                 
-                                stats['second_buy_success'] += 1
-                                stats['total_hold_days'] += hold_days
-                                profit_rate = round((high_price - avg_price) / avg_price * 100, 2)
-                                self._update_profit_distribution(stats, profit_rate)
+                                # 情况3：连续三天收盘价跌破止损价
+                                if consecutive_stop_loss_days >= 3:
+                                    signal.current_status = 'F'
+                                    signal.stop_loss_time = next_day.trade_date
+                                    signal.holding_price = stop_loss_point
+                                    signal.save()
+                                    
+                                    stats['failed'] += 1
+                                    stats['total_hold_days'] += (next_day.trade_date - second_buy_date).days
+                                    break
+                                
+                                # 情况2：达到目标价格且未触及止损
+                                if next_high >= target_price_2 and consecutive_stop_loss_days == 0:
+                                    signal.current_status = 'S'
+                                    signal.take_profit_time = next_day.trade_date
+                                    signal.holding_price = avg_price
+                                    signal.save()
+                                    
+                                    stats['second_buy_success'] += 1
+                                    stats['total_hold_days'] += (next_day.trade_date - second_buy_date).days
+                                    profit_rate = round((next_high - avg_price) / avg_price * 100, 2)
+                                    self._update_profit_distribution(stats, profit_rate)
+                                    break
+                            
+                            if signal.current_status in ['S', 'F']:
                                 break
             
             # 计算最大回撤
