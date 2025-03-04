@@ -86,11 +86,7 @@ DATABASES = {
         'OPTIONS': {
             'retry_count': 20,
             'retry_delay': 3,
-            'ssl_server_dn_match': True,
-            'max_sessions': 20,         # 最大会话数
-            'min_sessions': 1,          # 最小会话数
-            'session_timeout': 60,      # 会话超时时间（秒）
-            'wait_timeout': 30000       # 等待超时时间（毫秒）
+            'ssl_server_dn_match': True
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
