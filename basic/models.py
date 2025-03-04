@@ -262,9 +262,10 @@ class StrategyStats(models.Model):
     stock = models.ForeignKey(
         'Code',
         on_delete=models.CASCADE,
-        null=True,
+        null=True,  # 允许为空，表示整体市场统计
         blank=True,
-        verbose_name="股票"
+        verbose_name="股票",
+        help_text="为空时表示整体市场统计，有值时表示单个股票的统计"
     )
     total_signals = models.IntegerField(verbose_name="总信号数")
     first_buy_success = models.IntegerField(verbose_name="第一买点成功数")
