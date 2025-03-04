@@ -86,8 +86,7 @@ DATABASES = {
         'OPTIONS': {
             'retry_count': 3,
             'retry_delay': 1,
-            'ssl_server_dn_match': True,
-            'isolation_level': 'SERIALIZABLE'  # 添加序列化级别
+            'ssl_server_dn_match': True, # 添加序列化级别
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
