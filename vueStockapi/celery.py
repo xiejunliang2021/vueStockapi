@@ -56,10 +56,12 @@ def handle_task_failure(sender=None, task_id=None, exception=None, **kwargs):
 
 # 修改 app 配置
 app.conf.update(
-    task_default_retry_delay=300,  # 5分钟后重试
-    task_max_retries=3,           # 最大重试次数
-    task_soft_time_limit=3600,    # 软时间限制（1小时）
-    task_time_limit=3600,         # 硬时间限制（1小时）
-    worker_max_tasks_per_child=200,  # 工作进程最大任务数
-    worker_prefetch_multiplier=1,    # 限制预取任务数
+    task_default_retry_delay=60,    # 1分钟后重试
+    task_max_retries=3,            # 最大重试次数
+    task_soft_time_limit=1800,     # 软时间限制（30分钟）
+    task_time_limit=3600,          # 硬时间限制（1小时）
+    worker_max_tasks_per_child=50, # 降低每个工作进程的最大任务数
+    worker_prefetch_multiplier=1,   # 限制预取任务数
+    task_acks_late=True,           # 任务完成后再确认
+    task_reject_on_worker_lost=True # 在worker丢失时拒绝任务
 ) 
