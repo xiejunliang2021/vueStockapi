@@ -86,7 +86,7 @@ DATABASES = {
         'OPTIONS': {
             'retry_count': 3,
             'retry_delay': 1,
-            'ssl_server_dn_match': True, # 添加序列化级别
+            'ssl_server_dn_match': True,
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
@@ -164,7 +164,7 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Celery Beat 配置
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SYNC_EVERY = 1  # 每次循环都同步数据库
-CELERY_BEAT_MAX_LOOP_INTERVAL = 30  # 降低最大循环间隔
+CELERY_BEAT_MAX_LOOP_INTERVAL = 5  # 降低循环间隔
 
 # 日志配置
 LOGGING = {
@@ -272,3 +272,9 @@ CORS_ALLOW_WILDCARDS = False
 CELERY_BROKER_POOL_LIMIT = 10  # 限制连接池大小
 CELERY_TASK_ACKS_LATE = True   # 任务完成后再确认
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 限制预取任务数
+
+# 添加 Celery Beat 特定配置
+DJANGO_CELERY_BEAT_TZ_AWARE = False
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_MAX_LOOP_INTERVAL = 5  # 降低循环间隔
+CELERY_BEAT_SYNC_EVERY = 1  # 每次循环都同步数据库

@@ -4,7 +4,7 @@ from celery import Celery
 from django.conf import settings
 import logging
 from celery.schedules import crontab
-from celery.signals import task_failure
+from celery.signals import task_failure, worker_ready
 from celery.exceptions import MaxRetriesExceededError
 
 # 设置默认Django settings模块
@@ -58,10 +58,23 @@ def handle_task_failure(sender=None, task_id=None, exception=None, **kwargs):
 app.conf.update(
     task_default_retry_delay=60,    # 1分钟后重试
     task_max_retries=3,            # 最大重试次数
-    task_soft_time_limit=1800,     # 软时间限制（30分钟）
-    task_time_limit=3600,          # 硬时间限制（1小时）
-    worker_max_tasks_per_child=50, # 降低每个工作进程的最大任务数
+    task_soft_time_limit=3540,     # 软超时时间（秒）
+    task_time_limit=3600,          # 任务超时时间（秒）
+    worker_max_tasks_per_child=50, # 限制子进程处理的最大任务数
     worker_prefetch_multiplier=1,   # 限制预取任务数
     task_acks_late=True,           # 任务完成后再确认
-    task_reject_on_worker_lost=True # 在worker丢失时拒绝任务
-) 
+    task_reject_on_worker_lost=True, # 在worker丢失时拒绝任务
+    broker_transport_options={
+        'visibility_timeout': 3600,  # 消息可见性超时
+    },
+    beat_max_loop_interval=5,       # beat 循环间隔（秒）
+    beat_sync_every=1,              # 每次循环都同步
+)
+
+@worker_ready.connect
+def at_start(sender, **kwargs):
+    """当 worker 启动时执行的操作"""
+    print("Celery worker is ready!")
+
+if __name__ == '__main__':
+    app.start() 
