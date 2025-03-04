@@ -150,26 +150,17 @@ REST_FRAMEWORK = {
 DOCS_ROOT = os.path.join(BASE_DIR, 'docs')
 DOCS_ACCESS = 'public'
 
-# Celery 配置
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'django-db'
-CELERY_CACHE_BACKEND = 'django-cache'
-CELERY_ACCEPT_CONTENT = ['application/json']
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # 使用Redis作为消息代理
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'Asia/Shanghai'
+CELERY_TIMEZONE = 'Asia/Shanghai'  # 设置时区
 CELERY_ENABLE_UTC = False
 
-# Celery Beat 设置
-DJANGO_CELERY_BEAT_TZ_AWARE = False
-
-# 已有的 Celery Beat 配置
-CELERY_BEAT_SCHEDULE = {
-    'update-daily-data-and-signals': {
-        'task': 'basic.tasks.update_daily_data_and_signals',
-        'schedule': crontab(hour=17, minute=0),
-    },
-}
+# Celery Beat 配置
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 # 日志配置
 LOGGING = {
