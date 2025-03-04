@@ -87,6 +87,11 @@ DATABASES = {
             'retry_count': 20,
             'retry_delay': 3,
             'ssl_server_dn_match': True,
+            'threaded': True,           # 启用线程支持
+            'max_sessions': 20,         # 最大会话数
+            'min_sessions': 1,          # 最小会话数
+            'session_timeout': 60,      # 会话超时时间（秒）
+            'wait_timeout': 30000       # 等待超时时间（毫秒）
         },
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
@@ -265,3 +270,9 @@ CORS_ORIGIN_ALLOW_ALL = False
 
 # 是否允许请求中包含通配符
 CORS_ALLOW_WILDCARDS = False
+
+# 添加 Celery 配置
+CELERY_BROKER_POOL_LIMIT = 10  # 限制连接池大小
+CELERY_TASK_ACKS_LATE = True   # 任务完成后再确认
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 限制预取任务数
+CELERY_BEAT_MAX_LOOP_INTERVAL = 300    # Beat 最大循环间隔（秒）

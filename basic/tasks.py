@@ -7,8 +7,27 @@ from datetime import datetime, timedelta
 import logging
 from celery.exceptions import MaxRetriesExceededError
 from django_celery_results.models import TaskResult
+from django.core.cache import cache
+from contextlib import contextmanager
+import time
 
 logger = logging.getLogger(__name__)
+
+@contextmanager
+def task_lock(lock_id, timeout=3600):
+    """使用 Redis 实现的分布式锁"""
+    lock_id = f'lock_{lock_id}'
+    timeout_at = time.monotonic() + timeout
+    try:
+        while time.monotonic() < timeout_at:
+            if cache.add(lock_id, 'lock', timeout):
+                yield True
+                break
+            time.sleep(0.1)
+        else:
+            yield False
+    finally:
+        cache.delete(lock_id)
 
 @shared_task
 def update_daily_data_and_signals():
@@ -62,30 +81,35 @@ def daily_data_update(self):
     """每日更新股票数据"""
     logger.info("开始执行每日数据更新任务")
     try:
-        # 获取当前日期
-        today = datetime.now().date()
-        
-        # 检查是否为交易日
-        trading_day = TradingCalendar.objects.filter(
-            date=today,
-            is_trading_day=True
-        ).exists()
-        
-        if not trading_day:
-            print(f"{today} 不是交易日，跳过更新")
-            return
-        
-        # 更新日线数据
-        fetcher = StockDataFetcher()
-        result = fetcher.update_all_stocks_daily_data(trade_date=today.strftime('%Y-%m-%d'))
-        
-        if result.get('status') == 'success':
-            print(f"成功更新 {result.get('total_saved', 0)} 条日线数据")
-            logger.info("每日数据更新任务完成")
-            return True
-        else:
-            print(f"更新日线数据失败: {result.get('message')}")
-            return False
+        with task_lock('daily_data_update', timeout=3600) as acquired:
+            if not acquired:
+                logger.warning('Another daily_data_update task is already running')
+                return
+            
+            # 获取当前日期
+            today = datetime.now().date()
+            
+            # 检查是否为交易日
+            trading_day = TradingCalendar.objects.filter(
+                date=today,
+                is_trading_day=True
+            ).exists()
+            
+            if not trading_day:
+                print(f"{today} 不是交易日，跳过更新")
+                return
+            
+            # 更新日线数据
+            fetcher = StockDataFetcher()
+            result = fetcher.update_all_stocks_daily_data(trade_date=today.strftime('%Y-%m-%d'))
+            
+            if result.get('status') == 'success':
+                print(f"成功更新 {result.get('total_saved', 0)} 条日线数据")
+                logger.info("每日数据更新任务完成")
+                return True
+            else:
+                print(f"更新日线数据失败: {result.get('message')}")
+                return False
             
     except Exception as e:
         try:
