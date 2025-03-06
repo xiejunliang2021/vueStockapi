@@ -92,8 +92,18 @@ DATABASES = {
         'TEST': {
             'NAME': 'test_' + config('NAME_ORACLE',),
         },
+    },
+        'mysql_db': {
+        'ENGINE': 'django.db.backends.mysql',  # 使用 MySQL 数据库
+        'NAME': 'weighing',
+        'USER': config('USER_MYSQL',),
+        'PASSWORD': config('PASSWORD_MYSQL',),
+        'HOST': 'localhost',
+        'PORT': '3306',  # MySQL 的默认端口
     }
 }
+
+DATABASE_ROUTERS = ['db_router.WeighingAppRouter']
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
