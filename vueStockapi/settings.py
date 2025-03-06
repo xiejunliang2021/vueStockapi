@@ -103,7 +103,7 @@ DATABASES = {
     }
 }
 
-DATABASE_ROUTERS = ['db_router.WeighingAppRouter']
+DATABASE_ROUTERS = ['weighing.db_router.WeighingAppRouter']
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
