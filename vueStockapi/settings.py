@@ -93,13 +93,16 @@ DATABASES = {
             'NAME': 'test_' + config('NAME_ORACLE',),
         },
     },
-        'mysql_db': {
-        'ENGINE': 'django.db.backends.mysql',  # 使用 MySQL 数据库
+    'mysql_db': {
+        'ENGINE': 'django.db.backends.mysql',
         'NAME': 'weighing',
-        'USER': config('USER_MYSQL',),
-        'PASSWORD': config('PASSWORD_MYSQL',),
-        'HOST': 'localhost',
-        'PORT': '3306',  # MySQL 的默认端口
+        'USER': config('USER_MYSQL'),
+        'PASSWORD': config('PASSWORD_MYSQL'),
+        'HOST': '127.0.0.1',
+        'PORT': '3306',
+        'OPTIONS': {
+            'charset': 'utf8mb4'
+        }
     }
 }
 
