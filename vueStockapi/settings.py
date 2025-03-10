@@ -165,25 +165,26 @@ DOCS_ROOT = os.path.join(BASE_DIR, 'docs')
 DOCS_ACCESS = 'public'
 
 # Celery Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'  # 使用Redis作为消息代理
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'Asia/Shanghai'  # 设置时区
+CELERY_TIMEZONE = 'Asia/Shanghai'
 CELERY_ENABLE_UTC = False
-# Celery Configuration
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Celery Beat 配置
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SCHEDULE = {
     'update-daily-data-and-signals': {
         'task': 'basic.tasks.update_daily_data_and_signals',
         'schedule': crontab(
-            hour=17,     # 每天下午5点执行
+            hour=17,
             minute=0,
-            day_of_week='mon-fri'  # 只在工作日执行
+            day_of_week='mon-fri'
         ),
+        'options': {'queue': 'default'}
     },
 }
 
@@ -196,27 +197,28 @@ LOGGING = {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
-        'simple': {
-            'format': '{levelname} {asctime} {message}',
-            'style': '{',
-        },
     },
     'handlers': {
-        'file': {
+        'celery': {
             'level': 'DEBUG',
             'class': 'logging.FileHandler',
-            'filename': 'logs/debug.log',
+            'filename': os.path.join(BASE_DIR, 'logs', 'celery_tasks.log'),  # 使用绝对路径
             'formatter': 'verbose',
         },
         'console': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
+            'formatter': 'verbose',
+        }
     },
     'loggers': {
-        'basic': {
-            'handlers': ['file', 'console'],
+        'basic.tasks': {
+            'handlers': ['celery', 'console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'celery': {
+            'handlers': ['celery', 'console'],
             'level': 'DEBUG',
             'propagate': True,
         },
@@ -224,8 +226,9 @@ LOGGING = {
 }
 
 # 确保日志目录存在
-if not os.path.exists('logs'):
-    os.makedirs('logs')
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR)
 
 # CORS 配置
 # 是否允许所有源访问，生产环境建议设置为 False
@@ -296,6 +299,5 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 限制预取任务数
 
 # 添加 Celery Beat 特定配置
 DJANGO_CELERY_BEAT_TZ_AWARE = False
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_MAX_LOOP_INTERVAL = 5  # 降低循环间隔
 CELERY_BEAT_SYNC_EVERY = 1  # 每次循环都同步数据库
