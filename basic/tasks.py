@@ -17,6 +17,7 @@ from django_celery_results.models import TaskResult
 from django.core.cache import cache
 from contextlib import contextmanager
 import time
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +39,9 @@ def task_lock(lock_id, timeout=3600):
 
 @shared_task
 def update_daily_data_and_signals():
-    """
-    更新每日数据并分析股票模式
-    """
+    """更新每日数据并分析股票模式"""
+    logger.info("Starting update_daily_data_and_signals task")
     try:
-        # 创建 StockDataFetcher 实例
-        fetcher = StockDataFetcher()
-        
-        # 获取所有股票
-        stocks = Code.objects.filter(list_status='L')  # 只分析上市状态的股票
-        
         # 获取当前日期
         current_date = datetime.now().date()
         
@@ -61,37 +55,38 @@ def update_daily_data_and_signals():
             logger.info(f"{current_date} 不是交易日，跳过更新")
             return "Not a trading day"
         
-        for stock in stocks:
-            try:
-                # 获取最近的数据进行分析
-                daily_data = StockDailyData.objects.filter(
-                    stock=stock
-                ).order_by('-trade_date')[:20]  # 获取最近20天的数据
-                
-                if daily_data:
-                    # 使用 fetcher 实例的 analyze_stock_pattern 方法进行分析
-                    analysis_result = fetcher.analyze_stock_pattern(current_date.strftime('%Y-%m-%d'))
-                    
-                    if analysis_result and analysis_result.get('status') == 'success':
-                        # 保存分析结果
-                        for stock_data in analysis_result.get('data', []):
-                            StockAnalysis.objects.create(
-                                stock=stock,
-                                analysis_date=current_date,
-                                pattern=stock_data.get('pattern', '龙回头'),
-                                signal=stock_data.get('signal', 'buy'),
-                            )
-                            
-                            logger.info(f"Stock {stock.ts_code} analysis result saved")
-                    
-            except Exception as e:
-                logger.error(f"Error analyzing stock {stock.ts_code}: {str(e)}")
-                continue
-                
-        return "Daily data and signals update completed"
+        # 创建 StockDataFetcher 实例
+        fetcher = StockDataFetcher()
         
+        # 直接分析当前日期的模式
+        analysis_result = fetcher.analyze_stock_pattern(current_date.strftime('%Y-%m-%d'))
+        
+        if analysis_result.get('status') == 'success':
+            success_count = 0
+            for stock_data in analysis_result.get('data', []):
+                try:
+                    stock = Code.objects.get(ts_code=stock_data['stock'])
+                    StockAnalysis.objects.create(
+                        stock=stock,
+                        analysis_date=current_date,
+                        pattern=stock_data.get('pattern', '龙回头'),
+                        signal=stock_data.get('signal', 'buy'),
+                    )
+                    success_count += 1
+                    logger.info(f"Saved analysis for stock {stock.ts_code}")
+                except Exception as e:
+                    logger.error(f"Error saving analysis for stock {stock_data['stock']}: {str(e)}")
+            
+            logger.info(f"Task completed. Saved {success_count} analyses")
+            return f"Analysis completed successfully. Saved {success_count} results"
+        else:
+            error_msg = analysis_result.get('message', 'Unknown error')
+            logger.error(f"Analysis failed: {error_msg}")
+            return f"Analysis failed: {error_msg}"
+            
     except Exception as e:
-        logger.error(f"Error in update_daily_data_and_signals: {str(e)}")
+        logger.error(f"Task failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 @shared_task(bind=True, max_retries=3)
