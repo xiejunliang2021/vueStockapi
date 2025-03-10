@@ -7,7 +7,7 @@ from .models import (
     TradingCalendar, 
     StockAnalysis
 )
-from .utils import StockDataFetcher, analyze_stock_pattern
+from .utils import StockDataFetcher
 from .analysis import ContinuousLimitStrategy
 from .views import ManualStrategyAnalysisView
 from datetime import datetime, timedelta
@@ -42,6 +42,9 @@ def update_daily_data_and_signals():
     更新每日数据并分析股票模式
     """
     try:
+        # 创建 StockDataFetcher 实例
+        fetcher = StockDataFetcher()
+        
         # 获取所有股票
         stocks = Code.objects.filter(list_status='L')  # 只分析上市状态的股票
         
@@ -66,19 +69,20 @@ def update_daily_data_and_signals():
                 ).order_by('-trade_date')[:20]  # 获取最近20天的数据
                 
                 if daily_data:
-                    # 使用 analyze_stock_pattern 方法进行分析
-                    analysis_result = analyze_stock_pattern(stock.ts_code)
+                    # 使用 fetcher 实例的 analyze_stock_pattern 方法进行分析
+                    analysis_result = fetcher.analyze_stock_pattern(current_date.strftime('%Y-%m-%d'))
                     
                     if analysis_result and analysis_result.get('status') == 'success':
                         # 保存分析结果
-                        StockAnalysis.objects.create(
-                            stock=stock,
-                            analysis_date=current_date,
-                            pattern=analysis_result.get('pattern', ''),
-                            signal=analysis_result.get('signal', ''),
-                        )
-                        
-                        logger.info(f"Stock {stock.ts_code} analysis result saved")
+                        for stock_data in analysis_result.get('data', []):
+                            StockAnalysis.objects.create(
+                                stock=stock,
+                                analysis_date=current_date,
+                                pattern=stock_data.get('pattern', '龙回头'),
+                                signal=stock_data.get('signal', 'buy'),
+                            )
+                            
+                            logger.info(f"Stock {stock.ts_code} analysis result saved")
                     
             except Exception as e:
                 logger.error(f"Error analyzing stock {stock.ts_code}: {str(e)}")
