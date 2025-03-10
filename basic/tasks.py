@@ -1,6 +1,6 @@
 from celery import shared_task, chain
-from .models import Code, StockDailyData, PolicyDetails, StrategyStats, TradingCalendar
-from .utils import StockDataFetcher
+from .models import Code, StockDailyData, PolicyDetails, StrategyStats, TradingCalendar, Stock, DailyData, StockAnalysis
+from .utils import StockDataFetcher, analyze_stock_pattern
 from .analysis import ContinuousLimitStrategy
 from .views import ManualStrategyAnalysisView
 from datetime import datetime, timedelta
@@ -31,49 +31,56 @@ def task_lock(lock_id, timeout=3600):
 
 @shared_task
 def update_daily_data_and_signals():
-    """每日更新数据和策略信号的定时任务
-    
-    功能说明：
-    1. 从Tushare获取最新的股票日线数据
-    2. 对所有股票进行策略分析
-    3. 生成新的交易信号
-    4. 更新已有信号的状态
-    
-    执行时机：
-    - 每个交易日下午5点自动执行
-    
-    异常处理：
-    - 捕获并记录单个股票处理失败的异常
-    - 记录整体任务失败的异常
+    """
+    更新每日数据并分析股票模式
     """
     try:
-        # 更新日线数据
-        fetcher = StockDataFetcher()
-        fetcher.update_stock_daily_data()
-
-        # 分析新信号
-        strategy = ContinuousLimitStrategy()
-        today = datetime.now().date()
+        # 获取所有股票
+        stocks = Code.objects.filter(list_status='L')  # 只分析上市状态的股票
         
-        # 获取所有股票代码并生成新信号
-        codes = Code.objects.all()
-        for code in codes:
+        # 获取当前日期
+        current_date = datetime.now().date()
+        
+        # 检查是否为交易日
+        is_trading_day = TradingCalendar.objects.filter(
+            date=current_date,
+            is_trading_day=True
+        ).exists()
+        
+        if not is_trading_day:
+            logger.info(f"{current_date} 不是交易日，跳过更新")
+            return "Not a trading day"
+        
+        for stock in stocks:
             try:
-                signals = strategy.analyze_stock(
-                    code.ts_code,
-                    (today - timedelta(days=1)).strftime('%Y%m%d'),
-                    today.strftime('%Y%m%d')
-                )
-                strategy.save_signals(signals)
+                # 获取最近的数据进行分析
+                daily_data = StockDailyData.objects.filter(
+                    stock=stock
+                ).order_by('-trade_date')[:20]  # 获取最近20天的数据
+                
+                if daily_data:
+                    # 使用 analyze_stock_pattern 方法进行分析
+                    analysis_result = analyze_stock_pattern(stock.ts_code)
+                    
+                    if analysis_result and analysis_result.get('status') == 'success':
+                        # 保存分析结果
+                        StockAnalysis.objects.create(
+                            stock=stock,
+                            analysis_date=current_date,
+                            pattern=analysis_result.get('pattern', ''),
+                            signal=analysis_result.get('signal', ''),
+                        )
+                        
+                        logger.info(f"Stock {stock.ts_code} analysis result saved")
+                    
             except Exception as e:
-                print(f"处理股票 {code.ts_code} 时出错: {str(e)}")
+                logger.error(f"Error analyzing stock {stock.ts_code}: {str(e)}")
                 continue
-
-        # 更新历史信号状态
-        strategy.update_historical_signals()
+                
+        return "Daily data and signals update completed"
         
     except Exception as e:
-        print(f"更新任务执行失败: {str(e)}")
+        logger.error(f"Error in update_daily_data_and_signals: {str(e)}")
         raise
 
 @shared_task(bind=True, max_retries=3)

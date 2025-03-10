@@ -309,4 +309,16 @@ class StrategyStats(models.Model):
         return f"{self.date} - {'全市场' if not self.stock else self.stock.name}"
 
 
+class StockAnalysis(models.Model):
+    stock = models.ForeignKey('Code', on_delete=models.CASCADE)
+    analysis_date = models.DateField()
+    pattern = models.CharField(max_length=50)
+    signal = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('stock', 'analysis_date')
+        ordering = ['-analysis_date']
+
+
 

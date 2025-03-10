@@ -176,9 +176,16 @@ CELERY_ENABLE_UTC = False
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Celery Beat 配置
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
-CELERY_BEAT_SYNC_EVERY = 1  # 每次循环都同步数据库
-CELERY_BEAT_MAX_LOOP_INTERVAL = 5  # 降低循环间隔
+CELERY_BEAT_SCHEDULE = {
+    'update-daily-data-and-signals': {
+        'task': 'basic.tasks.update_daily_data_and_signals',
+        'schedule': crontab(
+            hour=17,     # 每天下午5点执行
+            minute=0,
+            day_of_week='mon-fri'  # 只在工作日执行
+        ),
+    },
+}
 
 # 日志配置
 LOGGING = {
