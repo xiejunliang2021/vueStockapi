@@ -18,6 +18,8 @@ from django.core.cache import cache
 from contextlib import contextmanager
 import time
 import traceback
+from django.conf import settings
+import cx_Oracle
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ def daily_data_update(self):
         with task_lock('daily_data_update', timeout=3600) as acquired:
             if not acquired:
                 logger.warning('Another daily_data_update task is already running')
-                return
+                return "Task already running"
             
             # 获取当前日期
             today = datetime.now().date()
@@ -109,27 +111,42 @@ def daily_data_update(self):
             ).exists()
             
             if not trading_day:
-                print(f"{today} 不是交易日，跳过更新")
-                return
+                logger.info(f"{today} 不是交易日，跳过更新")
+                return "Not a trading day"
             
             # 更新日线数据
-            fetcher = StockDataFetcher()
-            result = fetcher.update_all_stocks_daily_data(trade_date=today.strftime('%Y-%m-%d'))
-            
-            if result.get('status') == 'success':
-                print(f"成功更新 {result.get('total_saved', 0)} 条日线数据")
-                logger.info("每日数据更新任务完成")
-                return True
-            else:
-                print(f"更新日线数据失败: {result.get('message')}")
-                return False
+            try:
+                fetcher = StockDataFetcher()
+                result = fetcher.update_all_stocks_daily_data(trade_date=today.strftime('%Y-%m-%d'))
+                
+                if result.get('status') == 'success':
+                    logger.info(f"成功更新 {result.get('total_saved', 0)} 条日线数据")
+                    return f"Successfully updated {result.get('total_saved', 0)} records"
+                else:
+                    logger.warning(f"更新日线数据失败: {result.get('message')}")
+                    return f"Failed: {result.get('message')}"
+            except Exception as fetch_error:
+                # 捕获数据获取错误，但不重试数据库连接错误
+                if "DPY-4027" in str(fetch_error) or "tnsnames.ora" in str(fetch_error):
+                    logger.error(f"Oracle 连接配置错误: {str(fetch_error)}")
+                    return f"Oracle connection error: {str(fetch_error)}"
+                logger.error(f"数据获取错误: {str(fetch_error)}")
+                raise
             
     except Exception as e:
-        try:
-            self.retry(countdown=300)  # 5分钟后重试
-        except MaxRetriesExceededError:
+        # 避免数据库连接错误导致的无限重试
+        if "DPY-4027" in str(e) or "tnsnames.ora" in str(e):
+            logger.error(f"Oracle 连接配置错误: {str(e)}")
+            return f"Oracle connection error: {str(e)}"
+        
+        logger.error(f"每日数据更新任务错误: {str(e)}")
+        # 只有在非数据库连接错误时才重试
+        if self.request.retries < self.max_retries:
+            logger.info(f"重试任务 ({self.request.retries+1}/{self.max_retries})")
+            self.retry(countdown=300, exc=e)
+        else:
             logger.error(f"每日数据更新任务重试次数超限: {str(e)}")
-            raise
+            return f"Max retries exceeded: {str(e)}"
 
 @shared_task
 def analyze_stock_patterns():
@@ -274,38 +291,45 @@ def daily_stats_analysis():
         ).exists()
         
         if not trading_day:
-            print(f"{today} 不是交易日，跳过统计")
-            return
+            logger.info(f"{today} 不是交易日，跳过统计")
+            return "Not a trading day"
         
-        # 执行统计分析
-        analysis_view = ManualStrategyAnalysisView()
-        stats = analysis_view.analyze_signals(yesterday, today)
-        
-        # 保存统计结果
-        if stats['total'] > 0:
-            StrategyStats.objects.create(
-                date=today,
-                total_signals=stats['total'],
-                first_buy_success=stats['first_buy_success'],
-                second_buy_success=stats['second_buy_success'],
-                failed_signals=stats['failed'],
-                success_rate=round((stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100, 2),
-                avg_hold_days=stats['avg_hold_days'],
-                max_drawdown=stats['max_drawdown'],
-                profit_0_3=stats['profit_distribution']['0-3%'],
-                profit_3_5=stats['profit_distribution']['3-5%'],
-                profit_5_7=stats['profit_distribution']['5-7%'],
-                profit_7_10=stats['profit_distribution']['7-10%'],
-                profit_above_10=stats['profit_distribution']['>10%']
-            )
-            print(f"成功保存统计数据")
-            return True
-        else:
-            print("没有需要统计的数据")
-            return False
+        try:
+            # 执行统计分析
+            analysis_view = ManualStrategyAnalysisView()
+            stats = analysis_view.analyze_signals(yesterday, today)
+            
+            # 保存统计结果
+            if stats['total'] > 0:
+                StrategyStats.objects.create(
+                    date=today,
+                    total_signals=stats['total'],
+                    first_buy_success=stats['first_buy_success'],
+                    second_buy_success=stats['second_buy_success'],
+                    failed_signals=stats['failed'],
+                    success_rate=round((stats['first_buy_success'] + stats['second_buy_success']) / stats['total'] * 100, 2),
+                    avg_hold_days=stats['avg_hold_days'],
+                    max_drawdown=stats['max_drawdown'],
+                    profit_0_3=stats['profit_distribution']['0-3%'],
+                    profit_3_5=stats['profit_distribution']['3-5%'],
+                    profit_5_7=stats['profit_distribution']['5-7%'],
+                    profit_7_10=stats['profit_distribution']['7-10%'],
+                    profit_above_10=stats['profit_distribution']['>10%']
+                )
+                logger.info(f"成功保存统计数据")
+                return True
+            else:
+                logger.info("没有需要统计的数据")
+                return False
+        except Exception as analysis_error:
+            # 处理 Oracle 连接错误
+            if "DPY-4027" in str(analysis_error) or "tnsnames.ora" in str(analysis_error):
+                logger.error(f"Oracle 连接配置错误: {str(analysis_error)}")
+                return f"Oracle connection error: {str(analysis_error)}"
+            raise
             
     except Exception as e:
-        print(f"统计分析任务失败: {str(e)}")
+        logger.error(f"统计分析任务失败: {str(e)}")
         return False
 
 @shared_task
@@ -329,4 +353,14 @@ def monitor_task_status():
     # 发送通知或警报
     if recent_tasks.filter(status='FAILURE').exists():
         # 发送警报
-        pass 
+        pass
+
+def get_direct_connection():
+    """获取直接的数据库连接，绕过 Django ORM"""
+    # 使用与 settings.py 相同的连接信息
+    user = settings.USER_ORACLE
+    password = settings.PASSWORD_ORACLE
+    dsn = settings.NAME_ORACLE
+    
+    connection = cx_Oracle.connect(user=user, password=password, dsn=dsn)
+    return connection 
