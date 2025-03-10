@@ -1,5 +1,12 @@
 from celery import shared_task, chain
-from .models import Code, StockDailyData, PolicyDetails, StrategyStats, TradingCalendar, Stock, DailyData, StockAnalysis
+from .models import (
+    Code, 
+    StockDailyData, 
+    PolicyDetails, 
+    StrategyStats, 
+    TradingCalendar, 
+    StockAnalysis
+)
 from .utils import StockDataFetcher, analyze_stock_pattern
 from .analysis import ContinuousLimitStrategy
 from .views import ManualStrategyAnalysisView
