@@ -699,6 +699,111 @@ class StockDataFetcher:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {'status': 'error', 'message': str(e)}
 
+    def get_analysis_dates(self, trade_date):
+        """
+        获取分析所需的日期列表
+        
+        Args:
+            trade_date (str): 交易日期，格式为 'YYYY-MM-DD'
+            
+        Returns:
+            list: 包含4个日期的列表，按时间倒序排列（最近的日期在前）
+        """
+        try:
+            # 将输入日期转换为日期对象
+            current_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
+            
+            # 获取当前日期之前的10个交易日，以确保能找到足够的交易日
+            trading_days = list(TradingCalendar.objects.filter(
+                date__lte=current_date,
+                is_trading_day=True
+            ).order_by('-date')[:10].values_list('date', flat=True))
+            
+            # 确保有足够的交易日
+            if len(trading_days) < 4:
+                logger.warning(f"找不到足够的交易日，仅找到 {len(trading_days)} 天")
+                return None
+            
+            # 返回最近的4个交易日，按时间倒序排列
+            analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days[:4]]
+            logger.info(f"分析日期: {analysis_dates}")
+            return analysis_dates
+            
+        except Exception as e:
+            logger.error(f"获取分析日期出错: {str(e)}")
+            logger.error(traceback.format_exc())
+            return None
+
+    def get_stock_history(self, stock_id, date):
+        """获取股票历史数据"""
+        try:
+            # 获取第一个涨停日之前的历史数据
+            first_limit_up_date = datetime.strptime(date, '%Y-%m-%d').date()
+            
+            history_data = StockDailyData.objects.filter(
+                stock_id=stock_id,
+                trade_date__lt=first_limit_up_date  # 获取第一个涨停日之前的数据
+            ).order_by('-trade_date')[:3]  # 获取最近3天的数据
+            
+            if history_data.count() == 3:  # 确保有3天的数据
+                return history_data
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting history data for stock {stock_id}: {str(e)}")
+            return None
+
+    def calculate_price_points(self, history_data):
+        """计算关键价格点位"""
+        try:
+            max_high = max(d.high for d in history_data)
+            min_low = min(d.low for d in history_data)
+            avg_price = (max_high + min_low) / 2
+            take_profit = max_high * Decimal('1.075')
+            
+            return {
+                'max_high': float(max_high),
+                'min_low': float(min_low),
+                'avg_price': float(avg_price),
+                'take_profit': float(take_profit)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating price points: {str(e)}")
+            raise
+
+    def save_strategy_details(self, stock_id, trade_date, price_points):
+        """保存策略详情"""
+        try:
+            with transaction.atomic():
+                stock = Code.objects.get(ts_code=stock_id)
+                current_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
+                
+                # 检查是否已存在相同的策略记录
+                existing = PolicyDetails.objects.filter(
+                    stock=stock,
+                    date=current_date,
+                    strategy_type='龙回头'
+                ).exists()
+                
+                if not existing:
+                    PolicyDetails.objects.create(
+                        stock=stock,
+                        date=current_date,
+                        first_buy_point=price_points['max_high'],
+                        second_buy_point=price_points['avg_price'],
+                        stop_loss_point=price_points['min_low'],
+                        take_profit_point=price_points['take_profit'],
+                        strategy_type='龙回头',
+                        signal_strength=Decimal('0.85'),
+                        current_status='L'
+                    )
+                    logger.info(f"已为股票 {stock_id} 创建策略详情")
+                else:
+                    logger.info(f"股票 {stock_id} 的策略详情已存在")
+        except Exception as e:
+            logger.error(f"保存策略详情失败，股票 {stock_id}: {str(e)}")
+            raise
+
 
 
 
