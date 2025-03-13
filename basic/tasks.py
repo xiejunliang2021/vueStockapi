@@ -19,7 +19,7 @@ from contextlib import contextmanager
 import time
 import traceback
 from django.conf import settings
-import cx_Oracle
+from decouple import config
 
 logger = logging.getLogger(__name__)
 
@@ -355,12 +355,9 @@ def monitor_task_status():
         # 发送警报
         pass
 
+# 注释掉整个函数
+"""
 def get_direct_connection():
-    """获取直接的数据库连接，绕过 Django ORM"""
-    # 使用与 settings.py 相同的连接信息
-    user = settings.USER_ORACLE
-    password = settings.PASSWORD_ORACLE
-    dsn = settings.NAME_ORACLE
-    
-    connection = cx_Oracle.connect(user=user, password=password, dsn=dsn)
-    return connection 
+    # 函数内容
+    pass
+""" 
