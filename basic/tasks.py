@@ -164,62 +164,39 @@ def analyze_stock_patterns():
         
         if not trading_day:
             logger.info(f"{today} 不是交易日，跳过分析")
-            return
+            return "Not a trading day"
         
-        # 获取所有股票
-        stocks = Code.objects.filter(list_status='L')  # 只分析上市状态的股票
+        # 创建 StockDataFetcher 实例
+        fetcher = StockDataFetcher()
         
-        success_count = 0
-        for stock in stocks:
-            try:
-                # 获取该股票最近的日线数据
-                daily_data = StockDailyData.objects.filter(
-                    stock=stock,
-                    trade_date__lte=today
-                ).order_by('-trade_date')[:20]  # 获取最近20个交易日数据
-                
-                if daily_data.count() < 20:
-                    logger.warning(f"股票 {stock.ts_code} 数据不足，跳过分析")
-                    continue
-                
-                # 分析连续涨停模式
-                latest_data = daily_data[0]  # 最新一天的数据
-                if latest_data.close >= latest_data.up_limit:  # 当日涨停
-                    # 检查前期走势
-                    prev_highs = []
-                    prev_lows = []
-                    for data in daily_data[1:]:  # 不包括最新一天
-                        prev_highs.append(float(data.high))
-                        prev_lows.append(float(data.low))
-                    
-                    # 计算买点
-                    max_high = max(prev_highs[:3])  # 前3天最高价
-                    min_low = min(prev_lows[:3])    # 前3天最低价
-                    
-                    # 创建策略记录
-                    PolicyDetails.objects.create(
-                        stock=stock,
-                        date=today,
-                        first_buy_point=max_high,
-                        second_buy_point=round(max_high * 0.9, 2),
-                        stop_loss_point=min_low,
-                        take_profit_point=round(max_high * 1.075, 2),
-                        strategy_type='CONTINUOUS_LIMIT_UP',
-                        signal_strength=0.8,
-                        current_status='L'  # 初始状态为进行中
-                    )
+        # 使用 StockDataFetcher 的 analyze_stock_pattern 方法分析股票模式
+        today_str = today.strftime('%Y-%m-%d')
+        logger.info(f"使用 analyze_stock_pattern 分析日期: {today_str}")
+        
+        analysis_result = fetcher.analyze_stock_pattern(today_str)
+        
+        if analysis_result.get('status') == 'success':
+            success_count = 0
+            for stock_data in analysis_result.get('data', []):
+                try:
+                    # 股票数据已经在 analyze_stock_pattern 方法中通过 save_strategy_details 保存到 PolicyDetails 表
+                    # 这里记录成功处理的股票数量
                     success_count += 1
-                    
-            except Exception as e:
-                logger.error(f"处理股票 {stock.ts_code} 时出错: {str(e)}")
-                continue
-        
-        logger.info(f"成功生成 {success_count} 条策略记录")
-        return True
-        
+                    logger.info(f"成功分析股票 {stock_data['stock']}")
+                except Exception as e:
+                    logger.error(f"处理股票 {stock_data['stock']} 时出错: {str(e)}")
+            
+            logger.info(f"任务完成。成功分析 {success_count} 个股票")
+            return f"分析成功完成。保存了 {success_count} 个结果"
+        else:
+            error_msg = analysis_result.get('message', '未知错误')
+            logger.error(f"分析失败: {error_msg}")
+            return f"分析失败: {error_msg}"
+            
     except Exception as e:
-        logger.error(f"分析股票模式任务失败: {str(e)}")
-        return False
+        logger.error(f"任务失败: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
 
 @shared_task
 def daily_strategy_analysis():
