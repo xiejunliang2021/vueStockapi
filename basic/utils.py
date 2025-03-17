@@ -757,8 +757,8 @@ class StockDataFetcher:
         """计算关键价格点位"""
         try:
             max_high = max(d.high for d in history_data)
-            min_low = min(d.low for d in history_data)
-            avg_price = (max_high + min_low) / 2
+            min_low = max_high*0.8
+            avg_price = max_high*0.9
             take_profit = max_high * Decimal('1.075')
             
             return {

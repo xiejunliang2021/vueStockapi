@@ -259,7 +259,7 @@ def daily_stats_analysis():
     try:
         # 获取当前日期
         today = datetime.now().date()
-        yesterday = today - timedelta(days=1)
+        yesterday = today - timedelta(days=100)
         
         # 检查是否为交易日
         trading_day = TradingCalendar.objects.filter(
@@ -332,9 +332,3 @@ def monitor_task_status():
         # 发送警报
         pass
 
-# 注释掉整个函数
-"""
-def get_direct_connection():
-    # 函数内容
-    pass
-""" 
