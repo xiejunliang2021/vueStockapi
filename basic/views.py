@@ -612,6 +612,7 @@ class StockDailyDataUpdateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 class StockPatternView(APIView):
     http_method_names = ['get', 'post']
     
@@ -637,12 +638,7 @@ class StockPatternView(APIView):
             end_date = request.query_params.get('end_date')
             
             # 初始化查询集
-            queryset = (PolicyDetails.objects
-                .select_related('stock')
-                .only('date', 'first_buy_point', 'second_buy_point', 
-                      'stop_loss_point', 'take_profit_point', 
-                      'strategy_type', 'signal_strength', 'current_status')
-                .order_by('-date'))
+            queryset = PolicyDetails.objects.select_related('stock').order_by('-date')
             
             # 根据不同参数组合进行过滤
             if trade_date:
@@ -675,24 +671,13 @@ class StockPatternView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-            # 使用 values() 减少序列化开销
-            data = queryset.values(
-                'date',
-                'first_buy_point',
-                'second_buy_point',
-                'stop_loss_point',
-                'take_profit_point',
-                'strategy_type',
-                'signal_strength',
-                'current_status',
-                'stock__ts_code',
-                'stock__name'
-            )
+            # 使用序列化器序列化数据
+            serializer = PolicyDetailsSerializer(queryset, many=True)
             
             return Response({
                 'status': 'success',
-                'message': f'找到 {len(data)} 条策略记录',
-                'data': list(data)
+                'message': f'找到 {len(serializer.data)} 条策略记录',
+                'data': serializer.data
             })
             
         except Exception as e:
