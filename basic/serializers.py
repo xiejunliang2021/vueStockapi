@@ -3,9 +3,19 @@ from .models import PolicyDetails, Code, TradingCalendar, StrategyStats
 from datetime import date
 
 class PolicyDetailsSerializer(serializers.ModelSerializer):
+    """策略详情序列化器"""
+    first_buy_time = serializers.DateField(format="%Y-%m-%d", required=False, allow_null=True)
+    second_buy_time = serializers.DateField(format="%Y-%m-%d", required=False, allow_null=True)
+    take_profit_time = serializers.DateField(format="%Y-%m-%d", required=False, allow_null=True)
+    stop_loss_time = serializers.DateField(format="%Y-%m-%d", required=False, allow_null=True)
+    date = serializers.DateField(format="%Y-%m-%d")
+    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    
     class Meta:
         model = PolicyDetails
         fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
 
 
 class CodeSerializer(serializers.ModelSerializer):
