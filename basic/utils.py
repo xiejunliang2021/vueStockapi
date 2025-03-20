@@ -389,7 +389,7 @@ class StockDataFetcher:
         """更新所有股票的日线数据"""
         try:
             batch_size = 500
-            total_saved = 0  # 在这里初始化 total_saved
+            total_saved = 0
             
             if trade_date:
                 # 1. 转换日期格式
@@ -428,7 +428,7 @@ class StockDataFetcher:
                         print(f"获取数据: {total_records} 条记录")
                         
                         # 5. 批量保存数据
-                        daily_saved = 0  # 记录单日保存数量
+                        daily_saved = 0
                         
                         with transaction.atomic():
                             try:
