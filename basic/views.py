@@ -638,7 +638,14 @@ class StockPatternView(APIView):
             end_date = request.query_params.get('end_date')
             
             # 初始化查询集
-            queryset = PolicyDetails.objects.select_related('stock').order_by('-date')
+            queryset = (PolicyDetails.objects
+                .select_related('stock')
+                .only('date', 'first_buy_point', 'second_buy_point', 
+                      'stop_loss_point', 'take_profit_point', 
+                      'strategy_type', 'signal_strength', 'current_status',
+                      'first_buy_time', 'second_buy_time', 'take_profit_time',
+                      'stop_loss_time')
+                .order_by('-date'))
             
             # 根据不同参数组合进行过滤
             if trade_date:
@@ -671,13 +678,49 @@ class StockPatternView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-            # 使用序列化器序列化数据
-            serializer = PolicyDetailsSerializer(queryset, many=True)
+            # 使用 values() 减少序列化开销
+            data = queryset.values(
+                'date',
+                'first_buy_point',
+                'second_buy_point',
+                'stop_loss_point',
+                'take_profit_point',
+                'strategy_type',
+                'signal_strength',
+                'current_status',
+                'first_buy_time',
+                'second_buy_time',
+                'take_profit_time',
+                'stop_loss_time',
+                'stock__ts_code',
+                'stock__name'
+            )
+            
+            # 格式化日期字段
+            formatted_data = []
+            for item in data:
+                formatted_item = {
+                    'date': item['date'].strftime('%Y-%m-%d'),
+                    'first_buy_point': item['first_buy_point'],
+                    'second_buy_point': item['second_buy_point'],
+                    'stop_loss_point': item['stop_loss_point'],
+                    'take_profit_point': item['take_profit_point'],
+                    'strategy_type': item['strategy_type'],
+                    'signal_strength': item['signal_strength'],
+                    'current_status': item['current_status'],
+                    'stock__ts_code': item['stock__ts_code'],
+                    'stock__name': item['stock__name'],
+                    'first_buy_time': item['first_buy_time'].strftime('%Y-%m-%d') if item['first_buy_time'] else None,
+                    'second_buy_time': item['second_buy_time'].strftime('%Y-%m-%d') if item['second_buy_time'] else None,
+                    'take_profit_time': item['take_profit_time'].strftime('%Y-%m-%d') if item['take_profit_time'] else None,
+                    'stop_loss_time': item['stop_loss_time'].strftime('%Y-%m-%d') if item['stop_loss_time'] else None
+                }
+                formatted_data.append(formatted_item)
             
             return Response({
                 'status': 'success',
-                'message': f'找到 {len(serializer.data)} 条策略记录',
-                'data': serializer.data
+                'message': f'找到 {len(formatted_data)} 条策略记录',
+                'data': formatted_data
             })
             
         except Exception as e:
