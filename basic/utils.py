@@ -756,9 +756,12 @@ class StockDataFetcher:
     def calculate_price_points(self, history_data):
         """计算关键价格点位"""
         try:
-            max_high = max(d.high for d in history_data)
-            min_low = max_high*0.8
-            avg_price = max_high*0.9
+            # 获取最高价并转换为Decimal类型
+            max_high = Decimal(str(max(d.high for d in history_data)))
+            
+            # 使用Decimal进行所有计算
+            min_low = max_high * Decimal('0.8')
+            avg_price = max_high * Decimal('0.9')
             take_profit = max_high * Decimal('1.075')
             
             return {
