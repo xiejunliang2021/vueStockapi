@@ -15,12 +15,16 @@ class PolicyDetailsListCreateView(generics.ListCreateAPIView):
     """策略详情列表和创建视图"""
     queryset = PolicyDetails.objects.all()
     serializer_class = PolicyDetailsSerializer
+    # 添加过滤字段
+    filterset_fields = ['stock', 'date', 'strategy_type']
 
 
 class CodeListCreateView(generics.ListCreateAPIView):
     """股票代码列表和创建视图"""
     queryset = Code.objects.all()
     serializer_class = CodeSerializer
+    # 添加过滤字段
+    filterset_fields = ['ts_code', 'name', 'industry', 'symbol']
 
 class CodeRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     """股票代码详情、更新和删除视图"""

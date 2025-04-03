@@ -7,26 +7,3 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.oracle',
-        'NAME': 'your_oracle_sid',  # Oracle SID
-        'USER': 'your_oracle_user',
-        'PASSWORD': 'your_oracle_password',
-        'HOST': 'your_oracle_host',
-        'PORT': '1521',  # Oracle默认端口
-    },
-    'mysql_db': {  # weighing应用专用的MySQL数据库
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'weighing_db',
-        'USER': 'your_mysql_user',
-        'PASSWORD': 'your_mysql_password',
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        }
-    }
-}
-
-DATABASE_ROUTERS = ['db_router.WeighingRouter'] 
