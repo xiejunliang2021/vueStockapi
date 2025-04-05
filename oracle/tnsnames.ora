@@ -1,0 +1,5 @@
+stockapi_high = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-melbourne-1.oraclecloud.com))(connect_data=(service_name=geb977e4f1273f7_stockapi_high.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+stockapi_low = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-melbourne-1.oraclecloud.com))(connect_data=(service_name=geb977e4f1273f7_stockapi_low.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+stockapi_medium = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-melbourne-1.oraclecloud.com))(connect_data=(service_name=geb977e4f1273f7_stockapi_medium.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
