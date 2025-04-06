@@ -21,6 +21,7 @@ from rest_framework.documentation import include_docs_urls
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("api/basics/", include('basic.urls')),
+    path("api/weighing/", include('weighing.urls')),
     # 添加接口文档的路由
     re_path(r'^docs/', include_docs_urls(title='接口文档')),
     ]
