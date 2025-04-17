@@ -807,6 +807,214 @@ class StockDataFetcher:
             logger.error(f"保存策略详情失败，股票 {stock_id}: {str(e)}")
             raise
 
+    def analyze_trading_signals(self, start_date=None, end_date=None):
+        """分析交易信号并更新状态
+        
+        Args:
+            start_date (str, optional): 开始日期，格式：YYYY-MM-DD
+            end_date (str, optional): 结束日期，格式：YYYY-MM-DD
+            
+        Returns:
+            dict: 分析结果统计
+        """
+        logger.info("开始分析交易信号")
+        
+        try:
+            # 获取活跃信号
+            signals_query = PolicyDetails.objects.filter(current_status='L')
+            if start_date:
+                signals_query = signals_query.filter(date__gte=start_date)
+            if end_date:
+                signals_query = signals_query.filter(date__lte=end_date)
+                
+            stats = {
+                'total': 0,
+                'first_buy': 0,
+                'second_buy': 0,
+                'take_profit': 0,
+                'stop_loss': 0,
+                'errors': 0
+            }
+            
+            # 批量获取所有需要的数据
+            signal_ids = list(signals_query.values_list('id', flat=True))
+            signals = PolicyDetails.objects.filter(id__in=signal_ids).select_related('stock')
+            
+            for signal in signals:
+                try:
+                    # 获取后续日线数据
+                    daily_data = StockDailyData.objects.filter(
+                        stock=signal.stock,
+                        trade_date__gt=signal.date
+                    ).order_by('trade_date')
+                    
+                    if not daily_data.exists():
+                        continue
+                        
+                    stats['total'] += 1
+                    
+                    # 处理第一买点
+                    first_buy_hit = False
+                    for data in daily_data:
+                        if data.low <= signal.first_buy_point:
+                            first_buy_hit = True
+                            signal.first_buy_time = data.trade_date
+                            
+                            # 计算实际买入价格
+                            if data.open <= signal.first_buy_point:
+                                signal.holding_price = round(float(data.open), 2)
+                            else:
+                                signal.holding_price = round(float(signal.first_buy_point), 2)
+                                
+                            stats['first_buy'] += 1
+                            break
+                    
+                    if not first_buy_hit:
+                        continue
+                    
+                    # 处理第二买点和止盈
+                    for data in daily_data.filter(trade_date__gt=signal.first_buy_time):
+                        # 检查止损
+                        if data.low <= signal.stop_loss_point:
+                            signal.stop_loss_time = data.trade_date
+                            signal.current_status = 'F'
+                            stats['stop_loss'] += 1
+                            break
+                            
+                        # 检查第二买点
+                        if data.low <= signal.second_buy_point:
+                            signal.second_buy_time = data.trade_date
+                            # 更新持仓价格和止盈点
+                            signal.holding_price = round((float(data.close) + float(signal.holding_price)) / 2, 2)
+                            signal.take_profit_point = round(float(signal.holding_price) * 1.075, 2)
+                            stats['second_buy'] += 1
+                            continue
+                        
+                        # 检查止盈
+                        if data.high >= signal.take_profit_point:
+                            signal.take_profit_time = data.trade_date
+                            signal.current_status = 'S'
+                            stats['take_profit'] += 1
+                            break
+                    
+                    # 保存更新
+                    signal.save()
+                    
+                except Exception as e:
+                    logger.error(f"处理信号 {signal.id} 时出错: {str(e)}")
+                    stats['errors'] += 1
+                    continue
+            
+            # 记录分析结果
+            logger.info(f"分析完成: 共处理 {stats['total']} 条信号")
+            logger.info(f"第一买点: {stats['first_buy']}")
+            logger.info(f"第二买点: {stats['second_buy']}")
+            logger.info(f"止盈: {stats['take_profit']}")
+            logger.info(f"止损: {stats['stop_loss']}")
+            logger.info(f"错误: {stats['errors']}")
+            
+            return {
+                'status': 'success',
+                'stats': stats,
+                'message': f"分析完成: 共处理 {stats['total']} 条信号"
+            }
+            
+        except Exception as e:
+            logger.error(f"分析过程出错: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def validate_price_points(self, price_points):
+        """验证价格点位的合理性
+        
+        Args:
+            price_points (dict): 包含价格点位的字典
+            
+        Returns:
+            bool: 价格点位是否合理
+        """
+        try:
+            # 检查价格是否为正数
+            if any(price <= 0 for price in price_points.values()):
+                return False
+                
+            # 检查价格顺序
+            if not (price_points['stop_loss_point'] < price_points['second_buy_point'] < 
+                   price_points['first_buy_point'] < price_points['take_profit_point']):
+                return False
+                
+            return True
+        except Exception as e:
+            logger.error(f"验证价格点位出错: {str(e)}")
+            return False
+
+    def calculate_trading_stats(self, signal):
+        """计算交易统计指标
+        
+        Args:
+            signal (PolicyDetails): 策略信号对象
+            
+        Returns:
+            dict: 统计指标
+        """
+        try:
+            stats = {
+                'holding_days': 0,
+                'max_profit': 0,
+                'max_drawdown': 0,
+                'final_profit': 0
+            }
+            
+            if not signal.first_buy_time:
+                return stats
+                
+            # 获取持仓期间的数据
+            daily_data = StockDailyData.objects.filter(
+                stock=signal.stock,
+                trade_date__gte=signal.first_buy_time
+            ).order_by('trade_date')
+            
+            if not daily_data.exists():
+                return stats
+                
+            # 计算持仓天数
+            if signal.current_status in ['S', 'F']:
+                end_date = signal.take_profit_time or signal.stop_loss_time
+                stats['holding_days'] = (end_date - signal.first_buy_time).days
+            else:
+                stats['holding_days'] = (daily_data.last().trade_date - signal.first_buy_time).days
+                
+            # 计算最大收益和最大回撤
+            max_price = float(signal.holding_price)
+            min_price = float(signal.holding_price)
+            
+            for data in daily_data:
+                current_price = float(data.high)
+                if current_price > max_price:
+                    max_price = current_price
+                if float(data.low) < min_price:
+                    min_price = float(data.low)
+                    
+            stats['max_profit'] = round((max_price - float(signal.holding_price)) / float(signal.holding_price) * 100, 2)
+            stats['max_drawdown'] = round((float(signal.holding_price) - min_price) / float(signal.holding_price) * 100, 2)
+            
+            # 计算最终收益
+            if signal.current_status == 'S':
+                stats['final_profit'] = round((float(signal.take_profit_point) - float(signal.holding_price)) / 
+                                            float(signal.holding_price) * 100, 2)
+            elif signal.current_status == 'F':
+                stats['final_profit'] = round((float(signal.stop_loss_point) - float(signal.holding_price)) / 
+                                            float(signal.holding_price) * 100, 2)
+            else:
+                last_price = float(daily_data.last().close)
+                stats['final_profit'] = round((last_price - float(signal.holding_price)) / 
+                                            float(signal.holding_price) * 100, 2)
+                                            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"计算交易统计指标出错: {str(e)}")
+            return stats
+
 
 
 

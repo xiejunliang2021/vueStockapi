@@ -940,4 +940,61 @@ class StrategyStatsView(generics.ListCreateAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+class TradingSignalsAnalysisView(APIView):
+    """交易信号分析视图"""
+    
+    def post(self, request):
+        """处理交易信号分析请求
+        
+        请求参数:
+        - start_date (str, optional): 开始日期，格式：YYYY-MM-DD
+        - end_date (str, optional): 结束日期，格式：YYYY-MM-DD
+        
+        返回:
+        - status: 处理状态
+        - stats: 统计信息
+        - message: 处理结果描述
+        """
+        try:
+            # 获取请求参数
+            start_date = request.data.get('start_date')
+            end_date = request.data.get('end_date')
+            
+            # 验证日期格式
+            if start_date:
+                try:
+                    datetime.strptime(start_date, '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {'error': 'start_date 格式无效，请使用 YYYY-MM-DD 格式'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                    
+            if end_date:
+                try:
+                    datetime.strptime(end_date, '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {'error': 'end_date 格式无效，请使用 YYYY-MM-DD 格式'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # 执行分析
+            fetcher = StockDataFetcher()
+            result = fetcher.analyze_trading_signals(start_date, end_date)
+            
+            if result['status'] == 'success':
+                return Response(result)
+            else:
+                return Response(
+                    {'error': result['message']},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 

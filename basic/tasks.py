@@ -332,3 +332,115 @@ def monitor_task_status():
         # 发送警报
         pass
 
+@shared_task
+def analyze_trading_signals_daily():
+    """每日自动分析交易信号
+    
+    功能说明：
+    1. 获取当前日期
+    2. 检查是否为交易日
+    3. 分析最近30天的交易信号
+    4. 记录分析结果
+    """
+    try:
+        # 获取当前日期
+        today = datetime.now().date()
+        
+        # 检查是否为交易日
+        trading_day = TradingCalendar.objects.filter(
+            date=today,
+            is_trading_day=True
+        ).exists()
+        
+        if not trading_day:
+            logger.info(f"{today} 不是交易日，跳过分析")
+            return {
+                'status': 'skipped',
+                'message': f"{today} 不是交易日"
+            }
+        
+        # 计算分析日期范围
+        start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+        end_date = today.strftime('%Y-%m-%d')
+        
+        # 执行分析
+        fetcher = StockDataFetcher()
+        result = fetcher.analyze_trading_signals(start_date, end_date)
+        
+        # 记录分析结果
+        if result['status'] == 'success':
+            stats = result['stats']
+            logger.info(f"分析完成: 共处理 {stats['total']} 条信号")
+            logger.info(f"第一买点: {stats['first_buy']}")
+            logger.info(f"第二买点: {stats['second_buy']}")
+            logger.info(f"止盈: {stats['take_profit']}")
+            logger.info(f"止损: {stats['stop_loss']}")
+            logger.info(f"错误: {stats['errors']}")
+        else:
+            logger.error(f"分析失败: {result['message']}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"自动分析交易信号失败: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e)
+        }
+
+@shared_task
+def analyze_trading_signals_weekly():
+    """每周自动分析交易信号
+    
+    功能说明：
+    1. 获取当前日期
+    2. 检查是否为交易日
+    3. 分析最近90天的交易信号
+    4. 记录分析结果
+    """
+    try:
+        # 获取当前日期
+        today = datetime.now().date()
+        
+        # 检查是否为交易日
+        trading_day = TradingCalendar.objects.filter(
+            date=today,
+            is_trading_day=True
+        ).exists()
+        
+        if not trading_day:
+            logger.info(f"{today} 不是交易日，跳过分析")
+            return {
+                'status': 'skipped',
+                'message': f"{today} 不是交易日"
+            }
+        
+        # 计算分析日期范围
+        start_date = (today - timedelta(days=90)).strftime('%Y-%m-%d')
+        end_date = today.strftime('%Y-%m-%d')
+        
+        # 执行分析
+        fetcher = StockDataFetcher()
+        result = fetcher.analyze_trading_signals(start_date, end_date)
+        
+        # 记录分析结果
+        if result['status'] == 'success':
+            stats = result['stats']
+            logger.info(f"周度分析完成: 共处理 {stats['total']} 条信号")
+            logger.info(f"第一买点: {stats['first_buy']}")
+            logger.info(f"第二买点: {stats['second_buy']}")
+            logger.info(f"止盈: {stats['take_profit']}")
+            logger.info(f"止损: {stats['stop_loss']}")
+            logger.info(f"错误: {stats['errors']}")
+        else:
+            logger.error(f"周度分析失败: {result['message']}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"自动周度分析交易信号失败: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e)
+        }
+
