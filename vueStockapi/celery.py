@@ -43,6 +43,16 @@ app.conf.beat_schedule = {
         'task': 'basic.tasks.daily_stats_analysis',
         'schedule': crontab(hour=17, minute=20),  # 每天下午5点20分执行
     },
+    'analyze-trading-signals-daily': {
+        'task': 'basic.tasks.analyze_trading_signals_daily',
+        'schedule': crontab(hour=15, minute=30),  # 每天15:30执行
+        'options': {'expires': 3600}  # 任务过期时间
+    },
+    'analyze-trading-signals-weekly': {
+        'task': 'basic.tasks.analyze_trading_signals_weekly',
+        'schedule': crontab(day_of_week='fri', hour=15, minute=30),  # 每周五15:30执行
+        'options': {'expires': 3600}  # 任务过期时间
+    },
 }
 
 @app.task(bind=True)
