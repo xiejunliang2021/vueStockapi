@@ -179,7 +179,7 @@ class ContinuousLimitStrategy:
         cutoff_date = datetime.now() - timedelta(days=days)
         signals = PolicyDetails.objects.filter(
             date__gte=cutoff_date,
-            strategy_type='CONTINUOUS_LIMIT_UP'
+            strategy_type='龙回头'
         )
 
         for signal in signals:

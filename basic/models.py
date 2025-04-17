@@ -45,7 +45,7 @@ class PolicyDetails(models.Model):
     )
     stop_loss_point = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="止损点")
     take_profit_point = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="止盈点")
-    strategy_type = models.CharField(max_length=50, verbose_name="策略类型", default='CONTINUOUS_LIMIT_UP')
+    strategy_type = models.CharField(max_length=50, verbose_name="策略类型", default='龙回头')
     signal_strength = models.DecimalField(
         max_digits=5, 
         decimal_places=2, 
