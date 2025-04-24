@@ -699,33 +699,34 @@ class StockDataFetcher:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {'status': 'error', 'message': str(e)}
 
-    def get_analysis_dates(self, trade_date):
+    def get_analysis_dates(self, trade_date, num_days=4):
         """
         获取分析所需的日期列表
         
         Args:
             trade_date (str): 交易日期，格式为 'YYYY-MM-DD'
+            num_days (int): 需要获取的交易日天数，默认为4天
             
         Returns:
-            list: 包含4个日期的列表，按时间倒序排列（最近的日期在前）
+            list: 包含指定天数的日期列表，按时间倒序排列（最近的日期在前）
         """
         try:
             # 将输入日期转换为日期对象
             current_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
             
-            # 获取当前日期之前的10个交易日，以确保能找到足够的交易日
+            # 获取当前日期之前的交易日，多获取一些以确保能找到足够的交易日
             trading_days = list(TradingCalendar.objects.filter(
                 date__lte=current_date,
                 is_trading_day=True
-            ).order_by('-date')[:10].values_list('date', flat=True))
+            ).order_by('-date')[:num_days + 6].values_list('date', flat=True))
             
             # 确保有足够的交易日
-            if len(trading_days) < 4:
-                logger.warning(f"找不到足够的交易日，仅找到 {len(trading_days)} 天")
+            if len(trading_days) < num_days:
+                logger.warning(f"找不到足够的交易日，仅找到 {len(trading_days)} 天，需要 {num_days} 天")
                 return None
             
-            # 返回最近的4个交易日，按时间倒序排列
-            analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days[:4]]
+            # 返回指定数量的交易日，按时间倒序排列
+            analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days[:num_days]]
             logger.info(f"分析日期: {analysis_dates}")
             return analysis_dates
             
@@ -734,8 +735,18 @@ class StockDataFetcher:
             logger.error(traceback.format_exc())
             return None
 
-    def get_stock_history(self, stock_id, date):
-        """获取股票历史数据"""
+    def get_stock_history(self, stock_id, date, num_days=3):
+        """获取股票历史数据
+        
+        Args:
+            stock_id (str): 股票代码
+            date (str): 日期，格式为 'YYYY-MM-DD'
+            num_days (int): 需要获取的历史数据天数，默认为3天
+            
+        Returns:
+            QuerySet: 包含指定天数历史数据的QuerySet，按时间倒序排列
+            None: 如果获取数据失败或数据不足
+        """
         try:
             # 获取第一个涨停日之前的历史数据
             first_limit_up_date = datetime.strptime(date, '%Y-%m-%d').date()
@@ -743,21 +754,60 @@ class StockDataFetcher:
             history_data = StockDailyData.objects.filter(
                 stock_id=stock_id,
                 trade_date__lt=first_limit_up_date  # 获取第一个涨停日之前的数据
-            ).order_by('-trade_date')[:3]  # 获取最近3天的数据
+            ).order_by('-trade_date')[:num_days]  # 获取指定天数的数据
             
-            if history_data.count() == 3:  # 确保有3天的数据
+            if history_data.count() == num_days:  # 确保有足够的数据
                 return history_data
+            logger.warning(f"股票 {stock_id} 的历史数据不足 {num_days} 天")
             return None
             
         except Exception as e:
-            logger.error(f"Error getting history data for stock {stock_id}: {str(e)}")
+            logger.error(f"获取股票 {stock_id} 的历史数据时出错: {str(e)}")
             return None
 
     def calculate_price_points(self, history_data):
-        """计算关键价格点位"""
+        """计算关键价格点位
+        
+        Args:
+            history_data (QuerySet): 股票历史数据
+            
+        Returns:
+            dict: 包含计算出的价格点位的字典
+        """
         try:
-            # 获取最高价并转换为Decimal类型
-            max_high = Decimal(str(max(d.high for d in history_data)))
+            # 获取最近15天的数据
+            recent_data = history_data.order_by('-trade_date')[:15]
+            
+            # 检查最近10天是否有涨停
+            has_limit_up = False
+            limit_up_date = None
+            
+            # 只检查最近10天的数据
+            for data in recent_data[:10]:
+                if data.close == data.up_limit:
+                    has_limit_up = True
+                    limit_up_date = data.trade_date
+                    break
+            
+            if has_limit_up:
+                # 如果有涨停，获取涨停日前三天的数据
+                pre_limit_data = StockDailyData.objects.filter(
+                    stock_id=history_data.first().stock_id,
+                    trade_date__lt=limit_up_date
+                ).order_by('-trade_date')[:3]
+                
+                if pre_limit_data.count() == 3:
+                    # 使用涨停前三天的最高价
+                    max_high = Decimal(str(max(d.high for d in pre_limit_data)))
+                    logger.info(f"使用涨停 {limit_up_date} 前三天的最高价: {max_high}")
+                else:
+                    # 如果数据不足，使用传入的历史数据
+                    max_high = Decimal(str(max(d.high for d in history_data)))
+                    logger.info("涨停前数据不足，使用历史数据最高价")
+            else:
+                # 如果没有涨停，使用传入的历史数据
+                max_high = Decimal(str(max(d.high for d in history_data)))
+                logger.info("最近10天无涨停，使用历史数据最高价")
             
             # 使用Decimal进行所有计算
             min_low = max_high * Decimal('0.8')
@@ -771,7 +821,7 @@ class StockDataFetcher:
                 'take_profit': float(take_profit)
             }
         except Exception as e:
-            logger.error(f"Error calculating price points: {str(e)}")
+            logger.error(f"计算价格点位时出错: {str(e)}")
             raise
 
     def save_strategy_details(self, stock_id, trade_date, price_points):
