@@ -669,8 +669,8 @@ class StockDataFetcher:
                     result_stocks = []
                     for stock_id in down_stocks:
                         try:
-                            # 获取历史数据
-                            history_data = self.get_stock_history(stock_id, analysis_dates[3])
+                            # 获取历史数据，修改为获取15天的数据
+                            history_data = self.get_stock_history(stock_id, analysis_dates[3], num_days=15)
                             if history_data:
                                 # 计算关键价格
                                 price_points = self.calculate_price_points(history_data)
@@ -682,7 +682,7 @@ class StockDataFetcher:
                                     'signal': 'buy',
                                     **price_points
                                 })
-                                logger.debug(f"Successfully analyzed stock: {stock_id}")
+                                logger.info(f"Successfully analyzed stock: {stock_id}")
                         except Exception as e:
                             logger.error(f"Error processing stock {stock_id}: {str(e)}")
                             continue

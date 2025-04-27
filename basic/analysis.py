@@ -3,6 +3,7 @@ import numpy as np
 from basic.models import StockDailyData, PolicyDetails
 from django.db import transaction
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 class TechnicalAnalysis:
     @staticmethod
@@ -193,28 +194,28 @@ class ContinuousLimitStrategy:
                 continue
 
             # 初始化变量
-            holding_price = 0
-            latest_close = subsequent_data.latest('trade_date').close
+            holding_price = Decimal('0')
+            latest_close = Decimal(str(subsequent_data.latest('trade_date').close))
 
             # 遍历后续数据计算持仓价格
             for data in subsequent_data:
-                if data.low <= signal.first_buy_point:
-                    if data.low > signal.second_buy_point:
+                if Decimal(str(data.low)) <= signal.first_buy_point:
+                    if Decimal(str(data.low)) > signal.second_buy_point:
                         holding_price = signal.first_buy_point
                     else:
-                        holding_price = (signal.first_buy_point + signal.second_buy_point) / 2
+                        holding_price = (signal.first_buy_point + signal.second_buy_point) / Decimal('2')
                     break
 
             # 如果已经有持仓价格，更新相关数据
-            if holding_price > 0:
+            if holding_price > Decimal('0'):
                 signal.holding_price = holding_price
-                signal.take_profit_point = holding_price * self.TAKE_PROFIT_MULTIPLIER
+                signal.take_profit_point = holding_price * Decimal(str(self.TAKE_PROFIT_MULTIPLIER))
                 
                 # 计算持仓盈利
-                signal.holding_profit = (latest_close - holding_price) / holding_price * 100
+                signal.holding_profit = (latest_close - holding_price) / holding_price * Decimal('100')
                 
                 # 更新策略状态
-                if signal.holding_profit >= self.SUCCESS_PROFIT_THRESHOLD * 100:
+                if signal.holding_profit >= Decimal(str(self.SUCCESS_PROFIT_THRESHOLD * 100)):
                     signal.current_status = 'S'
                 elif latest_close < signal.stop_loss_point:
                     signal.current_status = 'F'

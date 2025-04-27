@@ -200,13 +200,13 @@ LOGGING = {
     },
     'handlers': {
         'celery': {
-            'level': 'DEBUG',
+            'level': 'INFO',
             'class': 'logging.FileHandler',
             'filename': os.path.join(BASE_DIR, 'logs', 'celery_tasks.log'),  # 使用绝对路径
             'formatter': 'verbose',
         },
         'console': {
-            'level': 'DEBUG',
+            'level': 'INFO',
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         }
@@ -214,12 +214,12 @@ LOGGING = {
     'loggers': {
         'basic.tasks': {
             'handlers': ['celery', 'console'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': True,
         },
         'celery': {
             'handlers': ['celery', 'console'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': True,
         },
     },
