@@ -197,29 +197,35 @@ LOGGING = {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
     },
     'handlers': {
-        'celery': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'celery_tasks.log'),  # 使用绝对路径
+        'file': {
+            'level': 'WARNING',  # 只记录警告及以上级别的日志
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/db_debug.log',
+            'maxBytes': 1024 * 1024 * 10,  # 10MB
+            'backupCount': 5,  # 保留5个备份文件
             'formatter': 'verbose',
         },
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        }
+            'formatter': 'simple',
+        },
     },
     'loggers': {
-        'basic.tasks': {
-            'handlers': ['celery', 'console'],
-            'level': 'INFO',
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'WARNING',
             'propagate': True,
         },
-        'celery': {
-            'handlers': ['celery', 'console'],
-            'level': 'INFO',
+        'basic': {
+            'handlers': ['file', 'console'],
+            'level': 'WARNING',
             'propagate': True,
         },
     },

@@ -392,10 +392,8 @@ class StockDataFetcher:
             total_saved = 0
             
             if trade_date:
-                # 1. 转换日期格式
                 check_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
                 
-                # 2. 检查是否为交易日
                 is_trading = TradingCalendar.objects.filter(
                     date=check_date,
                     is_trading_day=True
@@ -407,7 +405,6 @@ class StockDataFetcher:
                         'message': f'{trade_date} 不是交易日'
                     }
                 
-                # 3. 检查是否已有数据
                 existing_data = StockDailyData.objects.filter(
                     trade_date=check_date
                 ).exists()
@@ -418,55 +415,42 @@ class StockDataFetcher:
                         'message': f'{trade_date} 的数据已存在'
                     }
                 
-                # 4. 获取当天数据
                 tushare_date = check_date.strftime('%Y%m%d')
                 df = self.fetch_and_filter_daily_data(trade_date=tushare_date)
                 
                 if df is not None and not df.empty:
                     try:
                         total_records = len(df)
-                        print(f"获取数据: {total_records} 条记录")
-                        
-                        # 5. 批量保存数据
-                        daily_saved = 0
                         
                         with transaction.atomic():
-                            try:
-                                for start_idx in range(0, total_records, batch_size):
-                                    try:
-                                        end_idx = min(start_idx + batch_size, total_records)
-                                        batch_df = df.iloc[start_idx:end_idx]
-                                        
-                                        bulk_data = [
-                                            StockDailyData(
-                                                stock=row['stock'],
-                                                trade_date=row['trade_date'],
-                                                open=row['open'],
-                                                high=row['high'],
-                                                low=row['low'],
-                                                close=row['close'],
-                                                volume=row['vol'],
-                                                amount=row['amount'],
-                                                up_limit=row['up_limit'],
-                                                down_limit=row['down_limit']
-                                            )
-                                            for _, row in batch_df.iterrows()
-                                        ]
-                                        
-                                        StockDailyData.objects.bulk_create(bulk_data)
-                                        daily_saved += len(bulk_data)
-                                        total_saved += len(bulk_data)
-                                        print(f"进度: {daily_saved}/{total_records} (总计: {total_saved})")
-                                        
-                                    except Exception as batch_error:
-                                        print(f"{trade_date} 批量错误: {str(batch_error)}")
-                                        raise
-                            
-                            except Exception as tx_error:
-                                print(f"{trade_date} 事务错误: {str(tx_error)}")
-                                raise
-                            
-                        # 6. 清理旧数据
+                            for start_idx in range(0, total_records, batch_size):
+                                try:
+                                    end_idx = min(start_idx + batch_size, total_records)
+                                    batch_df = df.iloc[start_idx:end_idx]
+                                    
+                                    bulk_data = [
+                                        StockDailyData(
+                                            stock=row['stock'],
+                                            trade_date=row['trade_date'],
+                                            open=row['open'],
+                                            high=row['high'],
+                                            low=row['low'],
+                                            close=row['close'],
+                                            volume=row['vol'],
+                                            amount=row['amount'],
+                                            up_limit=row['up_limit'],
+                                            down_limit=row['down_limit']
+                                        )
+                                        for _, row in batch_df.iterrows()
+                                    ]
+                                    
+                                    StockDailyData.objects.bulk_create(bulk_data)
+                                    total_saved += len(bulk_data)
+                                    
+                                except Exception as batch_error:
+                                    logger.error(f"{trade_date} 批量错误: {str(batch_error)}")
+                                    raise
+                        
                         cleanup_result = self.cleanup_old_data()
                         
                         if total_saved > 0:
@@ -482,7 +466,7 @@ class StockDataFetcher:
                             }
                     
                     except Exception as save_error:
-                        print(f"保存数据错误: {str(save_error)}")
+                        logger.error(f"保存数据错误: {str(save_error)}")
                         raise
                 else:
                     return {
@@ -617,11 +601,9 @@ class StockDataFetcher:
 
     def analyze_stock_pattern(self, trade_date):
         """分析股票模式"""
-        logger.info(f"Starting analyze_stock_pattern for date: {trade_date}")
         try:
             # 获取分析日期
             analysis_dates = self.get_analysis_dates(trade_date)
-            logger.info(f"Analysis dates: {analysis_dates}")
             
             with connection.cursor() as cursor:
                 try:
@@ -654,27 +636,21 @@ class StockDataFetcher:
                         JOIN BASIC_CODE bc ON c.stock_code = bc.TS_CODE
                         WHERE LOWER(bc.NAME) NOT LIKE '%st%'
                     """.format(
-                        date1=analysis_dates[3],  # 最早的日期
-                        date2=analysis_dates[2],  # 第二天
-                        date3=analysis_dates[1],  # 第三天
-                        date4=analysis_dates[0]   # 最近的日期
+                        date1=analysis_dates[3],
+                        date2=analysis_dates[2],
+                        date3=analysis_dates[1],
+                        date4=analysis_dates[0]
                     )
                     
-                    logger.debug(f"Executing SQL with params: {analysis_dates}")
                     cursor.execute(sql)
-                    
                     down_stocks = [row[0] for row in cursor.fetchall()]
-                    logger.info(f"Found {len(down_stocks)} matching stocks")
                     
                     result_stocks = []
                     for stock_id in down_stocks:
                         try:
-                            # 获取历史数据，修改为获取15天的数据
                             history_data = self.get_stock_history(stock_id, analysis_dates[3], num_days=15)
                             if history_data:
-                                # 计算关键价格
                                 price_points = self.calculate_price_points(history_data)
-                                # 保存策略详情
                                 self.save_strategy_details(stock_id, trade_date, price_points)
                                 result_stocks.append({
                                     'stock': stock_id,
@@ -682,21 +658,17 @@ class StockDataFetcher:
                                     'signal': 'buy',
                                     **price_points
                                 })
-                                logger.info(f"Successfully analyzed stock: {stock_id}")
                         except Exception as e:
-                            logger.error(f"Error processing stock {stock_id}: {str(e)}")
+                            logger.error(f"处理股票 {stock_id} 时出错: {str(e)}")
                             continue
                     
-                    logger.info(f"Analysis completed. Found {len(result_stocks)} valid patterns")
                     return {'status': 'success', 'data': result_stocks}
                     
                 except Exception as e:
-                    logger.error(f"Database error: {str(e)}")
-                    logger.error(f"SQL params: {analysis_dates}")
+                    logger.error(f"数据库错误: {str(e)}")
                     return {'status': 'error', 'message': str(e)}
         except Exception as e:
-            logger.error(f"Analysis error: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"分析错误: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     def get_analysis_dates(self, trade_date, num_days=4):
