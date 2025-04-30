@@ -716,19 +716,20 @@ class StockDataFetcher:
             num_days (int): 需要获取的历史数据天数，默认为3天
             
         Returns:
-            QuerySet: 包含指定天数历史数据的QuerySet，按时间倒序排列
+            list: 包含指定天数历史数据的列表，按时间倒序排列
             None: 如果获取数据失败或数据不足
         """
         try:
             # 获取第一个涨停日之前的历史数据
             first_limit_up_date = datetime.strptime(date, '%Y-%m-%d').date()
             
-            history_data = StockDailyData.objects.filter(
+            # 获取数据并立即转换为列表
+            history_data = list(StockDailyData.objects.filter(
                 stock_id=stock_id,
                 trade_date__lt=first_limit_up_date  # 获取第一个涨停日之前的数据
-            ).order_by('-trade_date')[:num_days]  # 获取指定天数的数据
+            ).order_by('-trade_date')[:num_days])  # 获取指定天数的数据
             
-            if history_data.count() == num_days:  # 确保有足够的数据
+            if len(history_data) == num_days:  # 确保有足够的数据
                 return history_data
             logger.warning(f"股票 {stock_id} 的历史数据不足 {num_days} 天")
             return None
