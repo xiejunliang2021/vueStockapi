@@ -30,29 +30,29 @@ logger = logging.getLogger('celery')
 app.conf.beat_schedule = {
     'update-daily-data': {
         'task': 'basic.tasks.daily_data_update',
-        'schedule': crontab(hour=17, minute=0, timezone=settings.TIME_ZONE),
+        'schedule': crontab(hour=17, minute=0),
         'options': {'expires': 3600}  # 任务过期时间
     },
     'analyze-stock-patterns': {
         'task': 'basic.tasks.analyze_stock_patterns',
-        'schedule': crontab(hour=17, minute=5, timezone=settings.TIME_ZONE),  # 每天下午5点05分执行
+        'schedule': crontab(hour=17, minute=5),  # 每天下午5点05分执行
     },
     'analyze-daily-strategy': {
         'task': 'basic.tasks.daily_strategy_analysis',
-        'schedule': crontab(hour=17, minute=10, timezone=settings.TIME_ZONE),  # 每天下午5点10分执行
+        'schedule': crontab(hour=17, minute=10),  # 每天下午5点10分执行
     },
     'analyze-daily-stats': {
         'task': 'basic.tasks.daily_stats_analysis',
-        'schedule': crontab(hour=17, minute=20, timezone=settings.TIME_ZONE),  # 每天下午5点20分执行
+        'schedule': crontab(hour=17, minute=20),  # 每天下午5点20分执行
     },
     'analyze-trading-signals-daily': {
         'task': 'basic.tasks.analyze_trading_signals_daily',
-        'schedule': crontab(hour=15, minute=30, timezone=settings.TIME_ZONE),  # 每天15:30执行
+        'schedule': crontab(hour=15, minute=30),  # 每天15:30执行
         'options': {'expires': 3600}  # 任务过期时间
     },
     'analyze-trading-signals-weekly': {
         'task': 'basic.tasks.analyze_trading_signals_weekly',
-        'schedule': crontab(day_of_week='fri', hour=15, minute=30, timezone=settings.TIME_ZONE),  # 每周五15:30执行
+        'schedule': crontab(day_of_week='fri', hour=15, minute=30),  # 每周五15:30执行
         'options': {'expires': 3600}  # 任务过期时间
     },
 }
