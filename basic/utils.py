@@ -747,8 +747,8 @@ class StockDataFetcher:
             dict: 包含计算出的价格点位的字典
         """
         try:
-            # 获取最近15天的数据
-            recent_data = history_data.order_by('-trade_date')[:15]
+            # 获取最近15天的数据，先排序再切片
+            recent_data = list(history_data.order_by('-trade_date')[:15])
             
             # 检查最近10天是否有涨停
             has_limit_up = False
@@ -763,12 +763,12 @@ class StockDataFetcher:
             
             if has_limit_up:
                 # 如果有涨停，获取涨停日前三天的数据
-                pre_limit_data = StockDailyData.objects.filter(
+                pre_limit_data = list(StockDailyData.objects.filter(
                     stock_id=history_data.first().stock_id,
                     trade_date__lt=limit_up_date
-                ).order_by('-trade_date')[:3]
+                ).order_by('-trade_date')[:3])
                 
-                if pre_limit_data.count() == 3:
+                if len(pre_limit_data) == 3:
                     # 使用涨停前三天的最高价
                     max_high = Decimal(str(max(d.high for d in pre_limit_data)))
                     logger.info(f"使用涨停 {limit_up_date} 前三天的最高价: {max_high}")
