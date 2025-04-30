@@ -20,6 +20,7 @@ import time
 import traceback
 from django.conf import settings
 from decouple import config
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,8 @@ def update_daily_data_and_signals():
     """更新每日数据并分析股票模式"""
     logger.info("Starting update_daily_data_and_signals task")
     try:
-        # 获取当前日期
-        current_date = datetime.now().date()
+        # 获取当前日期（使用时区感知的时间）
+        current_date = timezone.now().date()
         
         # 检查是否为交易日
         is_trading_day = TradingCalendar.objects.filter(
@@ -101,8 +102,8 @@ def daily_data_update(self):
                 logger.warning('Another daily_data_update task is already running')
                 return "Task already running"
             
-            # 获取当前日期
-            today = datetime.now().date()
+            # 获取当前日期（使用时区感知的时间）
+            today = timezone.now().date()
             
             # 检查是否为交易日
             trading_day = TradingCalendar.objects.filter(
@@ -153,8 +154,8 @@ def analyze_stock_patterns():
     """分析股票模式并生成策略结果"""
     logger.info("开始分析股票模式并生成策略结果")
     try:
-        # 获取当前日期
-        today = datetime.now().date()
+        # 获取当前日期（使用时区感知的时间）
+        today = timezone.now().date()
         
         # 检查是否为交易日
         trading_day = TradingCalendar.objects.filter(
@@ -202,8 +203,8 @@ def analyze_stock_patterns():
 def daily_strategy_analysis():
     """每日策略分析"""
     try:
-        # 获取当前日期
-        today = datetime.now().date()
+        # 获取当前日期（使用时区感知的时间）
+        today = timezone.now().date()
         
         # 检查是否为交易日
         trading_day = TradingCalendar.objects.filter(
