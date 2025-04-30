@@ -742,14 +742,14 @@ class StockDataFetcher:
         """计算关键价格点位
         
         Args:
-            history_data (QuerySet): 股票历史数据
+            history_data (list): 股票历史数据列表
             
         Returns:
             dict: 包含计算出的价格点位的字典
         """
         try:
-            # 获取最近15天的数据，先排序再切片
-            recent_data = list(history_data.order_by('-trade_date')[:15])
+            # 获取最近15天的数据
+            recent_data = history_data[:15]  # 已经是按时间倒序排列的列表
             
             # 检查最近10天是否有涨停
             has_limit_up = False
@@ -765,7 +765,7 @@ class StockDataFetcher:
             if has_limit_up:
                 # 如果有涨停，获取涨停日前三天的数据
                 pre_limit_data = list(StockDailyData.objects.filter(
-                    stock_id=history_data.first().stock_id,
+                    stock_id=history_data[0].stock_id,  # 使用列表的第一个元素
                     trade_date__lt=limit_up_date
                 ).order_by('-trade_date')[:3])
                 
