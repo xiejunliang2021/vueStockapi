@@ -671,13 +671,16 @@ class StockDataFetcher:
             logger.error(f"分析错误: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def get_analysis_dates(self, trade_date, num_days=4):
+    def get_analysis_dates(self, trade_date, num_days=4, is_begin=True):
         """
         获取分析所需的日期列表
         
         Args:
             trade_date (str): 交易日期，格式为 'YYYY-MM-DD'
             num_days (int): 需要获取的交易日天数，默认为4天
+            is_begin (bool): 是否获取当前日期之前的交易日，默认为True
+                - True: 获取当前日期之前的交易日
+                - False: 获取当前日期之后的交易日
             
         Returns:
             list: 包含指定天数的日期列表，按时间倒序排列（最近的日期在前）
@@ -686,18 +689,26 @@ class StockDataFetcher:
             # 将输入日期转换为日期对象
             current_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
             
-            # 获取当前日期之前的交易日，多获取一些以确保能找到足够的交易日
-            trading_days = list(TradingCalendar.objects.filter(
-                date__lte=current_date,
-                is_trading_day=True
-            ).order_by('-date')[:num_days + 6].values_list('date', flat=True))
+            # 根据is_begin参数决定查询条件
+            if is_begin:
+                # 获取当前日期之前的交易日
+                trading_days = list(TradingCalendar.objects.filter(
+                    date__lte=current_date,
+                    is_trading_day=True
+                ).order_by('-date')[:num_days + 6].values_list('date', flat=True))
+            else:
+                # 获取当前日期之后的交易日
+                trading_days = list(TradingCalendar.objects.filter(
+                    date__gte=current_date,
+                    is_trading_day=True
+                ).order_by('date')[:num_days + 6].values_list('date', flat=True))
             
             # 确保有足够的交易日
             if len(trading_days) < num_days:
                 logger.warning(f"找不到足够的交易日，仅找到 {len(trading_days)} 天，需要 {num_days} 天")
                 return None
             
-            # 返回指定数量的交易日，按时间倒序排列
+            # 返回指定数量的交易日
             analysis_dates = [d.strftime('%Y-%m-%d') for d in trading_days[:num_days]]
             logger.info(f"分析日期: {analysis_dates}")
             return analysis_dates
@@ -707,27 +718,38 @@ class StockDataFetcher:
             logger.error(traceback.format_exc())
             return None
 
-    def get_stock_history(self, stock_id, date, num_days=3):
+    def get_stock_history(self, stock_id, date, num_days=3, is_begin=True):
         """获取股票历史数据
         
         Args:
             stock_id (str): 股票代码
             date (str): 日期，格式为 'YYYY-MM-DD'
             num_days (int): 需要获取的历史数据天数，默认为3天
+            is_begin (bool): 是否获取当前日期之前的数据，默认为True
+                - True: 获取当前日期之前的数据
+                - False: 获取当前日期之后的数据
             
         Returns:
             list: 包含指定天数历史数据的列表，按时间倒序排列
             None: 如果获取数据失败或数据不足
         """
         try:
-            # 获取第一个涨停日之前的历史数据
-            first_limit_up_date = datetime.strptime(date, '%Y-%m-%d').date()
+            # 将输入日期转换为日期对象
+            current_date = datetime.strptime(date, '%Y-%m-%d').date()
             
-            # 获取数据并立即转换为列表
-            history_data = list(StockDailyData.objects.filter(
-                stock_id=stock_id,
-                trade_date__lt=first_limit_up_date  # 获取第一个涨停日之前的数据
-            ).order_by('-trade_date')[:num_days])  # 获取指定天数的数据
+            # 根据is_begin参数决定查询条件
+            if is_begin:
+                # 获取当前日期之前的数据
+                history_data = list(StockDailyData.objects.filter(
+                    stock_id=stock_id,
+                    trade_date__lt=current_date  # 获取当前日期之前的数据
+                ).order_by('-trade_date')[:num_days])  # 获取指定天数的数据
+            else:
+                # 获取当前日期之后的数据
+                history_data = list(StockDailyData.objects.filter(
+                    stock_id=stock_id,
+                    trade_date__gt=current_date  # 获取当前日期之后的数据
+                ).order_by('trade_date')[:num_days])  # 获取指定天数的数据
             
             if len(history_data) == num_days:  # 确保有足够的数据
                 return history_data
@@ -1037,6 +1059,91 @@ class StockDataFetcher:
         except Exception as e:
             logger.error(f"计算交易统计指标出错: {str(e)}")
             return stats
+
+    def test_date_functions(self):
+        """测试日期相关函数
+        
+        测试 get_analysis_dates 和 get_stock_history 函数的功能
+        """
+        try:
+            # 测试用例1：获取当前日期之前的交易日
+            test_date = '2024-03-15'  # 使用一个已知的交易日
+            print("\n测试用例1: 获取当前日期之前的交易日")
+            print("测试 get_analysis_dates (is_begin=True):")
+            dates_before = self.get_analysis_dates(test_date, num_days=4, is_begin=True)
+            print(f"获取到的日期: {dates_before}")
+            
+            # 测试用例2：获取当前日期之后的交易日
+            print("\n测试用例2: 获取当前日期之后的交易日")
+            print("测试 get_analysis_dates (is_begin=False):")
+            dates_after = self.get_analysis_dates(test_date, num_days=4, is_begin=False)
+            print(f"获取到的日期: {dates_after}")
+            
+            # 测试用例3：获取股票历史数据（之前）
+            print("\n测试用例3: 获取股票历史数据（之前）")
+            test_stock = '000001.SZ'  # 使用一个已知的股票代码
+            print("测试 get_stock_history (is_begin=True):")
+            history_before = self.get_stock_history(test_stock, test_date, num_days=3, is_begin=True)
+            if history_before:
+                print(f"获取到的历史数据数量: {len(history_before)}")
+                print(f"第一条数据日期: {history_before[0].trade_date}")
+                print(f"最后一条数据日期: {history_before[-1].trade_date}")
+            
+            # 测试用例4：获取股票历史数据（之后）
+            print("\n测试用例4: 获取股票历史数据（之后）")
+            print("测试 get_stock_history (is_begin=False):")
+            history_after = self.get_stock_history(test_stock, test_date, num_days=3, is_begin=False)
+            if history_after:
+                print(f"获取到的历史数据数量: {len(history_after)}")
+                print(f"第一条数据日期: {history_after[0].trade_date}")
+                print(f"最后一条数据日期: {history_after[-1].trade_date}")
+            
+            # 验证结果
+            print("\n验证结果:")
+            
+            # 验证日期顺序
+            if dates_before:
+                print("1. 验证之前的日期顺序:")
+                for i in range(len(dates_before)-1):
+                    date1 = datetime.strptime(dates_before[i], '%Y-%m-%d')
+                    date2 = datetime.strptime(dates_before[i+1], '%Y-%m-%d')
+                    print(f"   {dates_before[i]} 应该大于 {dates_before[i+1]}: {date1 > date2}")
+            
+            if dates_after:
+                print("\n2. 验证之后的日期顺序:")
+                for i in range(len(dates_after)-1):
+                    date1 = datetime.strptime(dates_after[i], '%Y-%m-%d')
+                    date2 = datetime.strptime(dates_after[i+1], '%Y-%m-%d')
+                    print(f"   {dates_after[i]} 应该小于 {dates_after[i+1]}: {date1 < date2}")
+            
+            # 验证历史数据
+            if history_before:
+                print("\n3. 验证之前的历史数据:")
+                for i in range(len(history_before)-1):
+                    print(f"   {history_before[i].trade_date} 应该大于 {history_before[i+1].trade_date}: "
+                          f"{history_before[i].trade_date > history_before[i+1].trade_date}")
+            
+            if history_after:
+                print("\n4. 验证之后的历史数据:")
+                for i in range(len(history_after)-1):
+                    print(f"   {history_after[i].trade_date} 应该小于 {history_after[i+1].trade_date}: "
+                          f"{history_after[i].trade_date < history_after[i+1].trade_date}")
+            
+            return {
+                'status': 'success',
+                'message': '测试完成',
+                'dates_before': dates_before,
+                'dates_after': dates_after,
+                'history_before': history_before,
+                'history_after': history_after
+            }
+            
+        except Exception as e:
+            logger.error(f"测试过程出错: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
 
 
 
