@@ -770,31 +770,31 @@ class StockDataFetcher:
             dict: 包含计算出的价格点位的字典
         """
         try:
-            # 获取最近15天的数据
-            recent_data = history_data[:15]  # 已经是按时间倒序排列的列表
+            # 获取最近30天的数据
+            recent_data = history_data[:30]  # 已经是按时间倒序排列的列表
             
-            # 检查最近10天是否有涨停
+            # 检查最近15天是否有涨停
             has_limit_up = False
             limit_up_date = None
             
-            # 只检查最近10天的数据
-            for data in recent_data[:10]:
+            # 只检查最近15天的数据
+            for data in recent_data[:15]:
                 if data.close == data.up_limit:
                     has_limit_up = True
                     limit_up_date = data.trade_date
                     break
             
             if has_limit_up:
-                # 如果有涨停，获取涨停日前三天的数据
+                # 如果有涨停，获取涨停日前三天的数据（不包含涨停当天）
                 pre_limit_data = list(StockDailyData.objects.filter(
-                    stock_id=history_data[0].stock_id,  # 使用列表的第一个元素
-                    trade_date__lt=limit_up_date
-                ).order_by('-trade_date')[:3])
+                    stock_id=history_data[0].stock_id,
+                    trade_date__lt=limit_up_date  # 小于涨停日期，不包含涨停当天
+                ).order_by('-trade_date')[:3])  # 获取涨停前3天的数据
                 
                 if len(pre_limit_data) == 3:
-                    # 使用涨停前三天的最高价
+                    # 使用涨停前三天的最高价（不包含涨停当天）
                     max_high = Decimal(str(max(d.high for d in pre_limit_data)))
-                    logger.info(f"使用涨停 {limit_up_date} 前三天的最高价: {max_high}")
+                    logger.info(f"使用涨停 {limit_up_date} 前三天的最高价（不包含涨停当天）: {max_high}")
                 else:
                     # 如果数据不足，使用传入的历史数据
                     max_high = Decimal(str(max(d.high for d in history_data)))
@@ -802,7 +802,7 @@ class StockDataFetcher:
             else:
                 # 如果没有涨停，使用传入的历史数据
                 max_high = Decimal(str(max(d.high for d in history_data)))
-                logger.info("最近10天无涨停，使用历史数据最高价")
+                logger.info("最近15天无涨停，使用历史数据最高价")
             
             # 使用Decimal进行所有计算
             min_low = max_high * Decimal('0.8')
