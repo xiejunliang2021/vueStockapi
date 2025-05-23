@@ -24,3 +24,5 @@ media/
 **/migrations/*.py
 !**/migrations/__init__.py
 
+# 忽略数据库文件
+**/Wallet_Mhuabenwuxin/
