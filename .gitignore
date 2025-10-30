@@ -27,3 +27,5 @@ media/
 # 忽略数据库文件
 **/Wallet_Mhuabenwuxin/
 Wallet_Mhuabenwuxin/
+*.jar
+logs/
