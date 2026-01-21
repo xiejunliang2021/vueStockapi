@@ -19,9 +19,10 @@ import uuid
 import subprocess
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler
+from decouple import config
 
 # --- 基础配置 ---
-BOT_TOKEN = '8436411560:AAENdrBrn25ZjR3KS3WBrqjVkDNtLFaofb0'
+BOT_TOKEN = config('BOT_TOKEN')
 STATIC_FILE_PATH = "/var/www/html/subdata/nodes.txt"
 IP_POOL_CSV = "/var/www/html/subdata/ip_pool.csv"
 NODE_TEMPLATES_CSV = "/var/www/html/subdata/node_templates.csv"
