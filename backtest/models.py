@@ -66,6 +66,34 @@ class TradeLog(models.Model):
         null=True,
         blank=True
     )
+    
+    # 连续涨停策略特有字段
+    hold_days = models.IntegerField(
+        verbose_name="持仓天数",
+        null=True,
+        blank=True,
+        help_text="实际持仓天数"
+    )
+    min_diff_to_target = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="最小差值",
+        null=True,
+        blank=True,
+        help_text="买点确定后，最低价与买点的最小差值"
+    )
+    min_diff_date = models.DateField(
+        verbose_name="最小差值日期",
+        null=True,
+        blank=True,
+        help_text="最小差值出现的日期"
+    )
+    days_to_min_diff = models.IntegerField(
+        verbose_name="距买点确定天数",
+        null=True,
+        blank=True,
+        help_text="从买点确定到最小差值出现的天数"
+    )
 
     class Meta:
         verbose_name = "交易日志"

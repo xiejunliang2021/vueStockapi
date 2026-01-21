@@ -3,7 +3,7 @@
 """
 import backtrader as bt
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import date, timedelta
 from decimal import Decimal
 import logging
@@ -11,8 +11,12 @@ import logging
 from basic.services.strategy_service import StrategyService
 from ..models import PortfolioBacktest, TradeLog
 from ..strategies_backtrader import DragonTurnBacktraderStrategy, PandasData
+from ..strategies_limit_break import LimitBreakStrategy
+from ..data_feeds import LimitBreakDataFeed
+from .oracle_data_service import OracleDataService
 
 logger = logging.getLogger(__name__)
+
 
 
 class BacktraderBacktestService:
@@ -283,3 +287,226 @@ class BacktraderBacktestService:
             data_feeds[stock_code] = data_feed
         
         return data_feeds
+    
+    def run_limit_break_backtest(
+        self,
+        strategy_name: str,
+        start_date: date,
+        end_date: date,
+        initial_capital: Decimal,
+        stock_ids: Optional[List[str]] = None,
+        profit_target: float = 0.05,
+        max_hold_days: int = 30,
+        lookback_days: int = 15,
+        max_wait_days: int = 100,
+        position_pct: float = 0.02,
+        commission: float = 0.001,
+        db_alias: str = 'default'
+    ) -> Dict:
+        """
+        运行连续涨停策略回测
+        
+        Args:
+            strategy_name: 策略名称
+            start_date: 开始日期
+            end_date: 结束日期
+            initial_capital: 初始资金
+            stock_ids: 股票代码列表（可选，默认查询所有L状态股票）
+            profit_target: 止盈目标，默认5%
+            max_hold_days: 最大持仓天数，默认30天
+            lookback_days: 买点计算回溯天数，默认15天
+            max_wait_days: 买点等待超时天数，默认100天
+            position_pct: 单次买入占总资金比例，默认2%
+            commission: 佣金率，默认0.1%
+            db_alias: 数据库别名
+            
+        Returns:
+            回测结果字典
+        """
+        logger.info(f"开始连续涨停策略回测: {strategy_name}")
+        logger.info(f"时间范围: {start_date} 至 {end_date}")
+        logger.info(f"初始资金: {initial_capital}")
+        
+        # 1. 获取股票列表
+        logger.info("=" * 50)
+        logger.info("【阶段1】加载股票列表...")
+        
+        oracle_service = OracleDataService(db_alias=db_alias)
+        
+        if stock_ids:
+            stocks = [{'stock_id': sid, 'stock_name': f'Stock_{sid}', 'date': start_date} 
+                     for sid in stock_ids]
+        else:
+            # 从策略详情中查询
+            stocks = oracle_service.get_strategy_stocks(
+                strategy_type='L',  # 或者其他策略类型标识
+                current_status='L'
+            )
+        
+        if not stocks:
+            logger.warning("未找到股票")
+            return {
+                'status': 'SUCCESS',
+                'message': '未找到符合条件的股票',
+                'result_id': None
+            }
+        
+        logger.info(f"找到 {len(stocks)} 只股票")
+        
+        # 2. 批量回测
+        logger.info("=" * 50)
+        logger.info("【阶段2】执行批量回测...")
+        
+        all_trades = []
+        total_initial = Decimal('0')
+        total_final = Decimal('0')
+        success_count = 0
+        failed_count = 0
+        
+        for idx, stock_info in enumerate(stocks, 1):
+            stock_id = stock_info['stock_id']
+            stock_name = stock_info.get('stock_name', stock_id)
+            anchor_date = stock_info.get('date', start_date)
+            
+            logger.info(f"[{idx}/{len(stocks)}] 回测 {stock_name} ({stock_id})")
+            
+            # 获取日线数据
+            df_data = oracle_service.get_stock_daily_data(
+                stock_id=stock_id,
+                anchor_date=anchor_date,
+                days_before=60,
+                days_after=60
+            )
+            
+            if df_data is None or df_data.empty:
+                logger.warning(f"{stock_id} 无数据，跳过")
+                failed_count += 1
+                continue
+            
+            # 创建 Cerebro
+            cerebro = bt.Cerebro()
+            cerebro.broker.setcash(float(initial_capital))
+            cerebro.broker.setcommission(commission=commission)
+            
+            # 添加数据源
+            data_feed = LimitBreakDataFeed(dataname=df_data)
+            cerebro.adddata(data_feed)
+            
+            # 添加策略
+            cerebro.addstrategy(
+                LimitBreakStrategy,
+                profit_target=profit_target,
+                max_hold_days=max_hold_days,
+                lookback_days=lookback_days,
+                max_wait_days=max_wait_days,
+                position_pct=position_pct,
+                debug_mode=False
+            )
+            
+            # 添加分析器
+            cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
+            cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+            cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
+            
+            # 运行
+            initial_value = cerebro.broker.getvalue()
+            results = cerebro.run()
+            strategy_instance = results[0]
+            final_value = cerebro.broker.getvalue()
+            
+            # 提取交易记录
+            for trade_record in strategy_instance.trades_record:
+                trade_log = {
+                    'stock_code': stock_id,
+                    'buy_date': trade_record['买入日期'],
+                    'buy_price': Decimal(str(trade_record['买入价格'])),
+                    'sell_date': trade_record['卖出日期'],
+                    'sell_price': Decimal(str(trade_record['卖出价格'])),
+                    'quantity': 100,  # 默认值，策略中未记录
+                    'profit': Decimal(str(trade_record['盈亏金额'])),
+                    'return_rate': Decimal(str(trade_record['收益率'].replace('%', ''))) / 100,
+                    'sell_reason': trade_record['卖出原因'],
+                    'strategy_type': '连续涨停',
+                    # 扩展字段
+                    'hold_days': trade_record['持仓天数'],
+                    'min_diff_to_target': Decimal(str(trade_record['最小差值'])) if trade_record['最小差值'] != 'N/A' else None,
+                    'min_diff_date': trade_record['最小差值日期'] if trade_record['最小差值日期'] != 'N/A' else None,
+                    'days_to_min_diff': trade_record['距买点确定天数'] if trade_record['距买点确定天数'] != 'N/A' else None,
+                }
+                all_trades.append(trade_log)
+            
+            total_initial += Decimal(str(initial_value))
+            total_final += Decimal(str(final_value))
+            
+            if len(strategy_instance.trades_record) > 0:
+                success_count += 1
+                logger.info(f"✓ {stock_name}: {len(strategy_instance.trades_record)}笔交易")
+            else:
+                logger.info(f"- {stock_name}: 无交易")
+        
+        # 3. 计算汇总指标
+        logger.info("=" * 50)
+        logger.info("【阶段3】计算汇总指标...")
+        
+        total_profit = total_final - total_initial
+        total_return = total_profit / total_initial if total_initial > 0 else Decimal('0')
+        
+        total_trades = len(all_trades)
+        winning_trades = sum(1 for t in all_trades if t['profit'] > 0)
+        losing_trades = sum(1 for t in all_trades if t['profit'] <= 0)
+        win_rate = Decimal(str(winning_trades / total_trades)) if total_trades > 0 else Decimal('0')
+        
+        # 计算最大回撤（简化版，从daily_values计算）
+        # 这里简化处理，实际可以从每个股票的回测中提取
+        max_drawdown = Decimal('0')  # 待实现
+        
+        logger.info(f"总交易次数: {total_trades}")
+        logger.info(f"盈利次数: {winning_trades}, 亏损次数: {losing_trades}")
+        logger.info(f"胜率: {win_rate * 100:.2f}%")
+        logger.info(f"总收益率: {total_return * 100:.2f}%")
+        
+        # 4. 保存结果到MySQL
+        logger.info("=" * 50)
+        logger.info("【阶段4】保存回测结果...")
+        
+        portfolio_result = PortfolioBacktest.objects.create(
+            strategy_name=strategy_name,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=total_initial,
+            capital_per_stock_ratio=Decimal(str(position_pct)),  # 单票资金占比
+            final_capital=total_final,
+            total_profit=total_profit,
+            total_return=total_return,
+            max_drawdown=max_drawdown,
+            max_profit=Decimal('0'),  # 待实现
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            win_rate=win_rate
+        )
+        
+        # 批量保存交易日志
+        if all_trades:
+            trade_log_objects = [
+                TradeLog(portfolio_backtest=portfolio_result, **log)
+                for log in all_trades
+            ]
+            TradeLog.objects.bulk_create(trade_log_objects)
+            logger.info(f"保存了 {len(all_trades)} 条交易记录")
+        
+        logger.info(f"✅ 连续涨停策略回测完成! 结果ID: {portfolio_result.id}")
+        
+        return {
+            'status': 'SUCCESS',
+            'message': f'回测完成，共{len(all_trades)}笔交易',
+            'result_id': portfolio_result.id,
+            'metrics': {
+                'total_return': float(total_return),
+                'win_rate': float(win_rate),
+                'total_trades': total_trades,
+                'max_drawdown': float(max_drawdown),
+                'stocks_tested': len(stocks),
+                'stocks_with_trades': success_count,
+            }
+        }
