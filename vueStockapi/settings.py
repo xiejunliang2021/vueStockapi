@@ -269,6 +269,11 @@ LOGGING = {
             'level': 'WARNING',
             'propagate': True,
         },
+        'backtest': {
+            'handlers': ['console'],  # 只输出到控制台,方便实时查看
+            'level': 'INFO',  # 设置为 INFO 级别,显示详细的回测过程
+            'propagate': False,  # 不传播到父logger
+        },
     },
 }
 
@@ -288,6 +293,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "https://www.huabenwuxin.com",  # 生产环境域名
     "http://localhost:5173",        # 开发环境域名
+    "http://127.0.0.1:5173",        # 同样添加 127.0.0.1
 ]
 
 # 是否允许携带认证信息（cookies, HTTP authentication）

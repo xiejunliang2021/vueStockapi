@@ -50,17 +50,29 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)  # 默认INFO级别，可根据需要调整
 
 
-# 1. 策略：连续涨停 + 回调阴线
+# 1. 策略：连续涨停 + 回调阴线 - 新版本
 class LimitBreakStrategy(bt.Strategy):
     """
-    连续涨停 + 回调阴线后的买卖策略
+    连续涨停 + 回调阴线后的买卖策略 - 新版本
+    
+    买点计算规则：
+    1. 找到连续涨停序列的第一个涨停日 t0
+    2. 检查 t0 之前的 20 个交易日是否有涨停
+    3. 场景A（无涨停）：买点 = max(High[t-1], High[t-2], High[t-3])
+    4. 场景B（有涨停）：买点 = avg(Close[t-1] ... Close[t-20])
+    
+    卖出规则：
+    - 止盈：10%
+    - 止损：-5%
+    - 超时：30天
     """
 
     params = dict(
-        profit_target=0.05,     # 盈利 5% 止盈
+        profit_target=0.10,     # 止盈目标: 10%
+        stop_loss=-0.05,        # 止损: -5%（新增）
         max_hold_days=30,       # 最大持仓天数
-        lookback_days=15,       # 向前回溯天数
-        max_wait_days=100,       # 买点等待最大天数(超过则放弃该买点)
+        lookback_days=20,       # 买点计算回溯天数: 20天
+        max_wait_days=100,      # 买点等待最大天数(超过则放弃该买点)
         debug_mode=False,       # 调试模式:是否打印所有形态检测日志
         position_pct=0.02,      # 每次买入占总资金的比例（2%）
     )
@@ -69,7 +81,9 @@ class LimitBreakStrategy(bt.Strategy):
         """初始化策略变量"""
         self.order = None              # 当前订单
         self.buy_price = None          # 实际买入价
+        self.sell_price = None         # 实际卖出价
         self.buy_date = None           # 买入日期
+        self.sell_date = None          # 卖出决定日期（调用close的日期）
         self.hold_days = 0             # 持仓天数
         self.sell_reason = None        # 卖出原因
         self.limit = 0.096
@@ -126,19 +140,32 @@ class LimitBreakStrategy(bt.Strategy):
         if self.position:
             self.hold_days += 1
 
-            # 止盈卖出
+            # 计算当前盈亏率
             profit_rate = (self.data.close[0] - self.buy_price) / self.buy_price
-            self.log(f'计算止盈点位 {self.data.close[0]} / {self.buy_price}', level=logging.DEBUG)
-            if profit_rate >= self.p.profit_target:
-                self.sell_reason = '止盈'
-                self.log(f'止盈卖出 | 收益率: {profit_rate:.2%} | 价格: {self.data.close[0]:.2f}', level=logging.WARNING)
+            self.log(f'持仓检查 | 当前价:{self.data.close[0]:.2f} | 买入价:{self.buy_price:.2f} | 盈亏率:{profit_rate:.2%} | 持仓天数:{self.hold_days}', level=logging.DEBUG)
+            
+            # 1. 止损检查（优先级最高）
+            # 注意：stop_loss 参数是正数（如 0.05 表示 5%），但判断时需要转为负数
+            if profit_rate <= -self.p.stop_loss:
+                self.sell_reason = '止损'
+                self.sell_date = self.datas[0].datetime.date(0)  # ✅ 记录决定卖出的日期
+                self.log(f'🛑 止损卖出 | 亏损率: {profit_rate:.2%} | 止损线: {-self.p.stop_loss:.2%} | 价格: {self.data.close[0]:.2f}', level=logging.WARNING)
                 self.close()
                 return
 
-            # 超过最大持仓天数
+            # 2. 止盈检查
+            if profit_rate >= self.p.profit_target:
+                self.sell_reason = '止盈'
+                self.sell_date = self.datas[0].datetime.date(0)  # ✅ 记录决定卖出的日期
+                self.log(f'💰 止盈卖出 | 收益率: {profit_rate:.2%} | 价格: {self.data.close[0]:.2f}', level=logging.WARNING)
+                self.close()
+                return
+
+            # 3. 超期检查
             if self.hold_days >= self.p.max_hold_days:
                 self.sell_reason = f'超期({self.hold_days}天)'
-                self.log(f'超期卖出 | 持仓 {self.hold_days} 天 | 价格: {self.data.close[0]:.2f}', level=logging.WARNING)
+                self.sell_date = self.datas[0].datetime.date(0)  # ✅ 记录决定卖出的日期
+                self.log(f'⏰ 超期卖出 | 持仓 {self.hold_days} 天 | 价格: {self.data.close[0]:.2f}', level=logging.WARNING)
                 self.close()
                 return
 
@@ -323,86 +350,116 @@ class LimitBreakStrategy(bt.Strategy):
             return False
 
 
-
-
-
     def calculate_buy_price(self):
         """
-        根据规则计算买点价格
-        策略：找到第一个涨停日，从它之前开始回溯15天
+        计算买点价格 - 新策略
+        
+        步骤：
+        1. 找到连续涨停序列的第一个涨停日 t0
+        2. 检查 t0 之前的 20 个交易日是否有涨停
+        3. 场景A（无涨停）：买点 = max(High[t-1], High[t-2], High[t-3])
+        4. 场景B（有涨停）：买点 = avg(Close[t-1] ... Close[t-20])
         """
         current_date = self.datas[0].datetime.date(0)
-        self.log(f'计算买点价格:', level=logging.DEBUG)
+        self.log(f'📊 开始计算买点价格', level=logging.INFO)
         
-        # 找到第一个涨停日（从今天往前找）
+        # ========== 步骤1：找到第一个涨停日 t0 ==========
+        # 从前天（idx=-2）开始往前搜索，因为今天和昨天是连续下跌的形态确认日
         first_limit_idx = None
-        idx = -2  # 从前天开始（因为前2天是下跌，前天之前才可能是涨停）
+        idx = -2
         
         while idx >= -len(self.data):
-            # 直接读取 up_limit 列
             is_limit = self.data.up_limit[idx] == 1
-            close_price = self.data.close[idx]
             
             if is_limit:
-                first_limit_idx = idx
-                # 继续往前找，找到最早的涨停日
-                idx -= 1
+                first_limit_idx = idx  # 记录当前涨停日
+                idx -= 1  # 继续往前找，找到最早的涨停日
             else:
-                # 遇到非涨停日，停止
-                self.log(f'当前非涨停日期为: {self.datas[0].datetime.date(idx)}', level=logging.DEBUG)
+                # 遇到非涨停日，说明已经找到了连续涨停序列的边界
                 break
 
         if first_limit_idx is None:
-            self.log(f'未找到涨停日，无法计算买点', level=logging.WARNING)
+            self.log(f'❌ 未找到涨停日，无法计算买点', level=logging.WARNING)
             return None
         
-        self.log(f'最早涨停日: 前{abs(first_limit_idx)}天 (收:{self.data.close[first_limit_idx]:.2f})', level=logging.DEBUG)
+        # t0 就是第一个涨停日的索引
+        t0_idx = first_limit_idx
+        t0_date = self.datas[0].datetime.date(t0_idx)
+        t0_close = self.data.close[t0_idx]
         
-        # 从连续涨停的最早涨停日之前找第一个非涨停日
-        # first_limit_idx - 1 应该就是第一个非涨停日（因为上面的循环已经找到了连续涨停的边界）
-        first_non_limit_idx = first_limit_idx - 1
+        self.log(f'✅ 第一个涨停日 t0: 前{abs(t0_idx)}天 | 日期:{t0_date} | 收盘:{t0_close:.2f}', level=logging.INFO)
         
-        if abs(first_non_limit_idx) >= len(self.data):
-            self.log(f'连续涨停之前没有数据', level=logging.WARNING)
+        # ========== 步骤2：检查 t0 之前的 20 个交易日是否有涨停 ==========
+        # 检查范围：[t0-20, t0-1]，即 t0 之前的 20 天
+        lookback_start_idx = t0_idx - self.p.lookback_days  # t0 - 20
+        lookback_end_idx = t0_idx - 1  # t0 - 1
+        
+        self.log(f'🔍 检查回溯区间: 前{abs(lookback_start_idx)}天 至 前{abs(lookback_end_idx)}天 (共{self.p.lookback_days}天)', level=logging.DEBUG)
+        
+        # 检查数据是否充足
+        if abs(lookback_start_idx) >= len(self.data):
+            self.log(f'⚠️ 数据不足，无法回溯{self.p.lookback_days}天', level=logging.WARNING)
             return None
         
-        # 验证是否真的是非涨停日
-        if self.data.up_limit[first_non_limit_idx] == 1:
-            self.log(f'错误：找到的应该是非涨停日，但实际是涨停日', level=logging.ERROR)
-            return None
-            
-        self.log(f'第一个非涨停日: 前{abs(first_non_limit_idx)}天 (收:{self.data.close[first_non_limit_idx]:.2f})', level=logging.DEBUG)
-
-        # 从第一个非涨停日开始，往前回溯15天
-        start_idx = first_non_limit_idx - (self.p.lookback_days - 1)  # -14，因为包含first_non_limit_idx自己
-        end_idx = first_non_limit_idx
+        # 统计回溯区间内的涨停天数
+        has_limit_in_lookback = False
+        limit_dates_in_lookback = []
         
-        self.log(f'回溯区间: 前{abs(start_idx)}天 至 前{abs(end_idx)}天 (共{self.p.lookback_days}天)', level=logging.DEBUG)
-
-        # 收集这15天的收盘价（不排除涨停日）
-        lookback_closes = []
-        lookback_info = []
-
-        for i in range(start_idx, end_idx + 1):  # 包含 end_idx
+        for i in range(lookback_start_idx, lookback_end_idx + 1):
             if abs(i) >= len(self.data):
-                # 数据不足，只取能取到的
                 break
             
-            close_price = self.data.close[i]
-            is_limit = self.data.up_limit[i] == 1
-            lookback_closes.append(close_price)
-            lookback_info.append(f"前{abs(i)}天: 收{close_price:.2f} {'[涨停]' if is_limit else ''}")
-
-        if not lookback_closes:
-            self.log(f'回溯期没有数据', level=logging.WARNING)
-            return None
-
-        # 计算平均价格（所有收盘价，包括涨停日）
-        avg_price = sum(lookback_closes) / len(lookback_closes)
+            if self.data.up_limit[i] == 1:
+                has_limit_in_lookback = True
+                limit_dates_in_lookback.append(self.datas[0].datetime.date(i))
         
-        self.log(f'买点计算 | 回溯天数:{len(lookback_closes)}天 | 收盘价:{[round(c, 2) for c in lookback_closes[:5]]}{"..." if len(lookback_closes) > 5 else ""} | 买点价格: {avg_price:.2f}', level=logging.INFO)
+        # ========== 步骤3 & 4：根据场景计算买点 ==========
+        if has_limit_in_lookback:
+            # 【场景B】回溯区间内有涨停，取 20 天平均收盘价
+            self.log(f'📈 场景B: 回溯区间内发现 {len(limit_dates_in_lookback)} 个涨停日', level=logging.INFO)
+            if self.p.debug_mode and limit_dates_in_lookback:
+                self.log(f'涨停日期: {limit_dates_in_lookback[:5]}', level=logging.DEBUG)
+            
+            # 收集 20 天的收盘价
+            close_prices = []
+            for i in range(lookback_start_idx, lookback_end_idx + 1):
+                if abs(i) >= len(self.data):
+                    break
+                close_prices.append(self.data.close[i])
+            
+            if not close_prices:
+                self.log(f'❌ 场景B: 无法获取收盘价数据', level=logging.WARNING)
+                return None
+            
+            # 计算平均值
+            buy_price = sum(close_prices) / len(close_prices)
+            
+            self.log(f'💰 场景B买点计算 | 样本数:{len(close_prices)}天 | 收盘价范围:[{min(close_prices):.2f}, {max(close_prices):.2f}] | 平均值:{buy_price:.2f}', level=logging.INFO)
+            
+        else:
+            # 【场景A】回溯区间内无涨停，取前3天最高价的最大值
+            self.log(f'📉 场景A: 回溯区间内无涨停', level=logging.INFO)
+            
+            # 取 t-1, t-2, t-3 的最高价
+            # t0_idx - 1 就是 t-1
+            high_prices = []
+            for i in range(t0_idx - 3, t0_idx):  # [t-3, t-2, t-1]
+                if abs(i) >= len(self.data):
+                    break
+                high_price = self.data.high[i]
+                high_prices.append(high_price)
+                self.log(f'  前{abs(i)}天最高价: {high_price:.2f}', level=logging.DEBUG)
+            
+            if not high_prices:
+                self.log(f'❌ 场景A: 无法获取前3天最高价', level=logging.WARNING)
+                return None
+            
+            # 取最大值
+            buy_price = max(high_prices)
+            
+            self.log(f'💰 场景A买点计算 | 前3天最高价:{high_prices} | 最大值:{buy_price:.2f}', level=logging.INFO)
         
-        return avg_price
+        return buy_price
 
     def notify_order(self, order):
         """订单状态通知"""
@@ -413,7 +470,8 @@ class LimitBreakStrategy(bt.Strategy):
             if order.isbuy():
                 self.log(f'买入成交 | 价格: {order.executed.price:.2f} | 成本: {order.executed.value:.2f}', level=logging.INFO)
             elif order.issell():
-                self.log(f'卖出成交 | 价格: {order.executed.price:.2f} | 收益: {order.executed.pnl:.2f}', level=logging.INFO)
+                self.sell_price = order.executed.price  # ✅ 记录卖出价
+                self.log(f'卖出成交 | 价格: {order.executed.price:.2f} | 收益:  {order.executed.pnl:.2f}', level=logging.INFO)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             if order.status == order.Margin:
@@ -426,21 +484,38 @@ class LimitBreakStrategy(bt.Strategy):
     def notify_trade(self, trade):
         """交易完成通知"""
         if trade.isclosed:
-            # 计算盈亏
-            profit = trade.pnlcomm  # 扣除手续费后的净利润
-            # 避免除零错误
-            if trade.value != 0:
-                profit_rate = (trade.pnl / trade.value) * 100  # 收益率（%）
+            # ✅ 手动计算盈亏（不信任 trade.pnlcomm）
+            quantity = abs(trade.size)  # 交易数量
+            
+            # 使用记录的卖出价，如果没有则使用 trade.price
+            actual_sell_price = self.sell_price if self.sell_price else trade.price
+            actual_buy_price = self.buy_price if self.buy_price else 0
+            
+            # 盈亏 = (卖出价 - 买入价) × 数量
+            gross_profit = (actual_sell_price - actual_buy_price) * quantity
+            
+            # 手续费 = (买入金额 + 卖出金额) × 佣金率
+            commission_rate = 0.0003  # 默认万三
+            buy_cost = actual_buy_price * quantity
+            sell_value = actual_sell_price * quantity
+            commission = (buy_cost + sell_value) * commission_rate
+            
+            # 净利润 = 毛利润 - 手续费
+            profit = gross_profit - commission
+            
+            # 收益率 = 净利润 / 买入成本
+            if buy_cost != 0:
+                profit_rate = (profit / buy_cost) * 100
             else:
                 profit_rate = 0.0
-                self.log(f'警告：交易金额为0，无法计算收益率', level=logging.WARNING)
+                self.log(f'警告：买入成本为0，无法计算收益率', level=logging.WARNING)
             
             # 记录交易
             trade_record = {
                 '买入日期': self.buy_date.strftime('%Y-%m-%d') if self.buy_date else 'N/A',
-                '卖出日期': self.datas[0].datetime.date(0).strftime('%Y-%m-%d'),
-                '买入价格': self.buy_price if self.buy_price else 0,
-                '卖出价格': trade.price,
+                '卖出日期': self.sell_date.strftime('%Y-%m-%d') if self.sell_date else 'N/A',  # ✅ 使用决定卖出的日期
+                '买入价格': actual_buy_price,
+                '卖出价格': actual_sell_price,
                 '持仓天数': self.hold_days,
                 '卖出原因': self.sell_reason or '未知',
                 '盈亏金额': round(profit, 2),
@@ -459,7 +534,8 @@ class LimitBreakStrategy(bt.Strategy):
             else:
                 self.loss_count += 1
             
-            self.log(f'交易完成 | 盈亏: {profit:.2f} | 收益率: {profit_rate:.2f}% | 原因: {self.sell_reason}', level=logging.INFO)
+            self.log(f'交易完成 | 买入:{actual_buy_price:.2f} | 卖出:{actual_sell_price:.2f} | 数量:{quantity} | 盈亏: {profit:.2f} | 收益率: {profit_rate:.2f}% | 原因: {self.sell_reason}', level=logging.INFO)
+
 
 
 
@@ -491,28 +567,28 @@ class GetBasicData:
 
     def get_strategy_data(self):
         """获取当前进行中的策略详情及对应股票名称"""
-        sql = """
+        sql = \"\"\"
               SELECT p.ID,
                      c.NAME AS STOCK_NAME,
                      p.STRATEGY_TYPE,
                      p.STOCK_ID,
-                     p."DATE"
+                     p.\"DATE\"
               FROM BASIC_POLICYDETAILS p
                        JOIN BASIC_CODE c ON p.STOCK_ID = c.TS_CODE
               WHERE p.CURRENT_STATUS = 'L'
               ORDER BY p.ID DESC
-              """
+              \"\"\"
 
         try:
             rows = self.db.fetch_all(sql)
 
             if not rows:
-                logger.info("未查询到状态为 'L' (进行中) 的策略数据。")
+                logger.info(\"未查询到状态为 'L' (进行中) 的策略数据。\")
                 return []
 
             logger.info(f'查询成功，共 {len(rows)} 条数据')
             for row in rows:
-                logger.info(f"ID: {row[0]} | 股票: {row[1]} ({row[3]}) | 策略: {row[2]} | 策略日期: {row[4]}")
+                logger.info(f\"ID: {row[0]} | 股票: {row[1]} ({row[3]}) | 策略: {row[2]} | 策略日期: {row[4]}\")
             return rows
 
         except Exception as e:
@@ -535,9 +611,9 @@ class GetBasicData:
                     return None
 
         # 2. 计算时间范围
-        # 策略日期前需要足够的数据：形态检测(5天) + 回溯计算(15天) + 缓冲(10天) ≈ 30天
+        # 策略日期前需要足够的数据：形态检测(5天) + 回溯计算(20天) + 缓冲(10天) ≈ 35天
         # 为保险起见,向前加载60天
-        start_date = anchor_date - datetime.timedelta(days=60)  # 扩大到60天
+        start_date = anchor_date - datetime.timedelta(days=60)
         theoretical_end_date = anchor_date + datetime.timedelta(days=60)
         today = datetime.date.today()
         end_date = min(theoretical_end_date, today)
@@ -545,14 +621,14 @@ class GetBasicData:
         logger.debug(f'正在获取 {stock_id} 的数据，时间范围: {start_date} 至 {end_date}')
 
         # 3. 准备 SQL
-        sql = """
+        sql = \"\"\"
               SELECT TRADE_DATE, OPEN, HIGH, LOW, CLOSE, VOLUME
               FROM BASIC_STOCKDAILYDATA
               WHERE STOCK_ID = :stock_id
                 AND TRADE_DATE >= :start_date
                 AND TRADE_DATE <= :end_date
               ORDER BY TRADE_DATE ASC
-              """
+              \"\"\"
 
         try:
             # 检查连接状态,如果断开则重连
@@ -798,9 +874,12 @@ if __name__ == "__main__":
                 plot_daily_returns(all_results)
 
     except Exception as e:
-        logger.error(f'程序运行出错: {e}')
+        logger.error(f'回测过程出现错误: {e}')
         import traceback
         traceback.print_exc()
+    
     finally:
+        # 确保数据库连接被关闭
         if getter:
             getter.close()
+            logger.info('已清理资源')

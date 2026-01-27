@@ -14,6 +14,7 @@ from ..strategies_backtrader import DragonTurnBacktraderStrategy, PandasData
 from ..strategies_limit_break import LimitBreakStrategy
 from ..data_feeds import LimitBreakDataFeed
 from .oracle_data_service import OracleDataService
+from .tushare_data_service import TushareDataService
 
 logger = logging.getLogger(__name__)
 
@@ -295,13 +296,15 @@ class BacktraderBacktestService:
         end_date: date,
         initial_capital: Decimal,
         stock_ids: Optional[List[str]] = None,
-        profit_target: float = 0.05,
+        profit_target: float = 0.10,  # 默认改为10%
+        stop_loss: float = 0.05,      # 新增参数，默认5%
         max_hold_days: int = 30,
         lookback_days: int = 15,
         max_wait_days: int = 100,
         position_pct: float = 0.02,
         commission: float = 0.001,
-        db_alias: str = 'default'
+        db_alias: str = 'default',
+        data_source: str = 'tushare'  # 新增参数：'tushare' 或 'oracle'
     ) -> Dict:
         """
         运行连续涨停策略回测
@@ -319,6 +322,7 @@ class BacktraderBacktestService:
             position_pct: 单次买入占总资金比例，默认2%
             commission: 佣金率，默认0.1%
             db_alias: 数据库别名
+            data_source: 数据源，'tushare'(默认) 或 'oracle'
             
         Returns:
             回测结果字典
@@ -326,6 +330,7 @@ class BacktraderBacktestService:
         logger.info(f"开始连续涨停策略回测: {strategy_name}")
         logger.info(f"时间范围: {start_date} 至 {end_date}")
         logger.info(f"初始资金: {initial_capital}")
+        logger.info(f"数据源: {data_source.upper()}")
         
         # 1. 获取股票列表
         logger.info("=" * 50)
@@ -337,10 +342,10 @@ class BacktraderBacktestService:
             stocks = [{'stock_id': sid, 'stock_name': f'Stock_{sid}', 'date': start_date} 
                      for sid in stock_ids]
         else:
-            # 从策略详情中查询
-            stocks = oracle_service.get_strategy_stocks(
-                strategy_type='L',  # 或者其他策略类型标识
-                current_status='L'
+            # ✅ 修改：根据回测日期范围查询所有股票（不限制策略类型和状态）
+            stocks = oracle_service.get_strategy_stocks_by_date_range(
+                start_date=start_date,
+                end_date=end_date
             )
         
         if not stocks:
@@ -352,6 +357,14 @@ class BacktraderBacktestService:
             }
         
         logger.info(f"找到 {len(stocks)} 只股票")
+        
+        # ✅ 初始化数据服务
+        if data_source == 'tushare':
+            data_service = TushareDataService()
+            logger.info("使用 Tushare API 获取数据（前复权）")
+        else:
+            data_service = oracle_service
+            logger.info("使用 Oracle 数据库获取数据")
         
         # 2. 批量回测
         logger.info("=" * 50)
@@ -366,16 +379,16 @@ class BacktraderBacktestService:
         for idx, stock_info in enumerate(stocks, 1):
             stock_id = stock_info['stock_id']
             stock_name = stock_info.get('stock_name', stock_id)
-            anchor_date = stock_info.get('date', start_date)
+            anchor_date = stock_info.get('date', start_date)  # ✅ 使用股票策略日期作为锚点
             
-            logger.info(f"[{idx}/{len(stocks)}] 回测 {stock_name} ({stock_id})")
+            logger.info(f"[{idx}/{len(stocks)}] 回测 {stock_name} ({stock_id}), 锚点日期: {anchor_date}")
             
-            # 获取日线数据
-            df_data = oracle_service.get_stock_daily_data(
+            # ✅ 获取日线数据 - 使用股票策略日期作为锚点
+            df_data = data_service.get_stock_daily_data(
                 stock_id=stock_id,
-                anchor_date=anchor_date,
-                days_before=60,
-                days_after=60
+                anchor_date=anchor_date,  # 使用股票策略日期
+                days_before=lookback_days + 10,
+                days_after=max_hold_days + 10
             )
             
             if df_data is None or df_data.empty:
@@ -396,6 +409,7 @@ class BacktraderBacktestService:
             cerebro.addstrategy(
                 LimitBreakStrategy,
                 profit_target=profit_target,
+                stop_loss=stop_loss,  # ✅ 传递止损参数
                 max_hold_days=max_hold_days,
                 lookback_days=lookback_days,
                 max_wait_days=max_wait_days,

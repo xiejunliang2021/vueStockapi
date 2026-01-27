@@ -3,6 +3,14 @@
 import os
 import sys
 
+# Configure oracledb to work with Django's Oracle backend
+try:
+    import oracledb
+    # Make oracledb available as cx_Oracle for Django compatibility
+    sys.modules['cx_Oracle'] = oracledb
+except ImportError:
+    pass
+
 
 def main():
     """Run administrative tasks."""

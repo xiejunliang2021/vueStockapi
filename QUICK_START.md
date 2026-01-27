@@ -29,12 +29,9 @@
 # 打开PowerShell
 cd d:\vueStockapi
 
-# 激活conda环境
-conda activate stockapi
-
-# 创建并应用迁移
-python manage.py makemigrations backtest
-python manage.py migrate backtest
+# 创建并应用迁移 (无需手动激活)
+uv run python manage.py makemigrations backtest
+uv run python manage.py migrate backtest
 ```
 
 ### 步骤2：启动Celery Worker
@@ -42,10 +39,9 @@ python manage.py migrate backtest
 ```powershell
 # 新开一个PowerShell窗口
 cd d:\vueStockapi
-conda activate stockapi
 
 # 启动Celery Worker
-celery -A vueStockapi worker -l info -P eventlet
+uv run celery -A vueStockapi worker -l info -P solo
 ```
 
 ### 步骤3：测试功能
@@ -54,23 +50,23 @@ celery -A vueStockapi worker -l info -P eventlet
 
 ```powershell
 # 在第一个窗口运行
-python manage.py test backtest.tests -v 2
+uv run python manage.py test backtest.tests -v 2
 ```
 
 #### 方式B：测试API
 
 ```powershell
 # 确保Django服务在运行
-python manage.py runserver
+uv run python manage.py runserver
 
 # 新开一个窗口，运行API测试
-python test_api.py
+uv run python test_api.py
 ```
 
 #### 方式C：Django Shell直接调用
 
 ```powershell
-python manage.py shell
+uv run python manage.py shell
 ```
 
 然后输入：
@@ -246,12 +242,13 @@ d:\vueStockapi\
 
 ## ⚡ 常见问题
 
-### Q1: 为什么需要激活conda环境？
+### Q1: 为什么使用 uv run？
 
-A: 项目使用conda管理Python环境，需要激活`stockapi`環境才能访问Django和相关依赖包。
+A: 项目使用 uv 管理 Python 环境。`uv run` 会自动创建或激活虚拟环境并运行命令，无需手动激活。
 
 ```powershell
-conda activate stockapi
+# 如果需要手动激活
+.venv\Scripts\activate
 ```
 
 ### Q2: Celery Worker启动失败？
@@ -370,15 +367,12 @@ OK
 ### 1. 立即执行（现在）
 
 ```powershell
-# 1. 激活环境
-conda activate stockapi
+# 1. 应用迁移
+uv run python manage.py makemigrations backtest
+uv run python manage.py migrate backtest
 
-# 2. 应用迁移
-python manage.py makemigrations backtest
-python manage.py migrate backtest
-
-# 3. 运行测试
-python manage.py test backtest.tests -v 2
+# 2. 运行测试
+uv run python manage.py test backtest.tests -v 2
 ```
 
 ### 2. 短期计划（本周）

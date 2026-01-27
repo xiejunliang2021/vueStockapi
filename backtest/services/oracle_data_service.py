@@ -69,6 +69,48 @@ class OracleDataService:
         logger.info(f"找到 {len(stocks)} 只股票")
         return stocks
     
+    def get_strategy_stocks_by_date_range(
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
+        limit: Optional[int] = None
+    ) -> List[dict]:
+        """
+        根据日期范围获取策略相关股票列表（不限制策略类型和状态）
+        
+        Args:
+            start_date: 开始日期
+            end_date: 结束日期
+            limit: 限制返回数量
+            
+        Returns:
+            股票列表，每项包含: id, stock_name, strategy_type, stock_id, date
+        """
+        logger.info(f"查询策略股票: date_range={start_date}~{end_date}")
+        
+        query = PolicyDetails.objects.using(self.db_alias).filter(
+            date__gte=start_date,
+            date__lte=end_date
+        )
+        
+        query = query.select_related('stock').order_by('date')  # 按日期升序
+        
+        if limit:
+            query = query[:limit]
+        
+        stocks = []
+        for policy in query:
+            stocks.append({
+                'id': policy.id,
+                'stock_name': policy.stock.name,
+                'strategy_type': policy.strategy_type,
+                'stock_id': policy.stock.ts_code,
+                'date': policy.date,  # 这个日期将作为锚点
+            })
+        
+        logger.info(f"在日期范围 {start_date}~{end_date} 找到 {len(stocks)} 只股票")
+        return stocks
+    
     def get_stock_daily_data(
         self,
         stock_id: str,

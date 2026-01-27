@@ -7,6 +7,7 @@ __pycache__/
 # 忽略虚拟环境
 venv/
 env/
+.venv/
 
 # 忽略数据库文件
 *.sqlite3

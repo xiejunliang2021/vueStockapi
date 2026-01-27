@@ -1,0 +1,8 @@
+LICENSE
+README.md
+pyproject.toml
+vueStockapi.egg-info/PKG-INFO
+vueStockapi.egg-info/SOURCES.txt
+vueStockapi.egg-info/dependency_links.txt
+vueStockapi.egg-info/requires.txt
+vueStockapi.egg-info/top_level.txt

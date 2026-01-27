@@ -73,17 +73,45 @@ def run_portfolio_backtest(self, filters, backtest_params):
             commission = backtest_params.get('commission', 0.0003)
             logger.info(f"佣金率: {commission*100:.2f}%")
             
-            result = backtest_service.run_backtest(
-                strategy_name=strategy_name,
-                start_date=start_date,
-                end_date=end_date,
-                initial_capital=initial_capital,
-                capital_per_stock_ratio=capital_per_stock_ratio,
-                strategy_type=strategy_type,
-                hold_timeout_days=hold_timeout_days,
-                db_alias=db_alias,
-                commission=commission
-            )
+            # 根据策略类型选择对应的回测方法
+            if strategy_type == '连续涨停':
+                # 使用连续涨停策略回测（LimitBreakStrategy）
+                logger.info("📊 使用连续涨停策略 (LimitBreakStrategy)")
+                
+                # 数据源选择：默认 Tushare，可通过参数指定
+                data_source = backtest_params.get('data_source', 'tushare')
+                logger.info(f"数据源: {data_source.upper()}")
+                
+                result = backtest_service.run_limit_break_backtest(
+                    strategy_name=strategy_name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    initial_capital=initial_capital,
+                    stock_ids=None,  # 查询所有L状态股票
+                    profit_target=backtest_params.get('profit_target', 0.10),  # 获取止盈参数
+                    stop_loss=backtest_params.get('stop_loss', 0.05),          # 获取止损参数
+                    max_hold_days=backtest_params.get('hold_timeout_days', 30), # 获取最大持仓天数
+                    lookback_days=20,
+                    max_wait_days=100,
+                    position_pct=float(capital_per_stock_ratio),
+                    commission=commission,
+                    db_alias=db_alias,
+                    data_source=data_source  # ✅ 传递数据源参数
+                )
+            else:
+                # 使用龙回头策略回测（DragonTurnBacktraderStrategy）
+                logger.info("🐉 使用龙回头策略 (DragonTurnBacktraderStrategy)")
+                result = backtest_service.run_backtest(
+                    strategy_name=strategy_name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    initial_capital=initial_capital,
+                    capital_per_stock_ratio=capital_per_stock_ratio,
+                    strategy_type=strategy_type,
+                    hold_timeout_days=hold_timeout_days,
+                    db_alias=db_alias,
+                    commission=commission
+                )
         else:
             backtest_service = BacktestService()
             

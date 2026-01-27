@@ -2,8 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from .models import PortfolioBacktest
-from .serializers import BatchBacktestRequestSerializer, PortfolioBacktestSerializer
+from .models import PortfolioBacktest, TradeLog
+from .serializers import BatchBacktestRequestSerializer, PortfolioBacktestSerializer, TradeLogSerializer
 from .tasks import run_portfolio_backtest
 
 class PortfolioBacktestResultListView(ListAPIView):
@@ -36,4 +36,34 @@ class BatchPortfolioBacktestView(APIView):
             status=status.HTTP_202_ACCEPTED
         )
 
+class TradeLogListView(ListAPIView):
+    """获取指定回测的交易日志列表"""
+    serializer_class = TradeLogSerializer
+    
+    def get_queryset(self):
+        backtest_id = self.kwargs.get('backtest_id')
+        return TradeLog.objects.filter(portfolio_backtest_id=backtest_id)
+
+class PortfolioBacktestDeleteView(APIView):
+    """删除指定的回测记录"""
+    
+    def delete(self, request, backtest_id, *args, **kwargs):
+        try:
+            backtest = PortfolioBacktest.objects.get(id=backtest_id)
+            strategy_name = backtest.strategy_name
+            backtest.delete()  # 级联删除关联的 TradeLog
+            return Response(
+                {"message": f"回测记录 '{strategy_name}' 已删除"},
+                status=status.HTTP_200_OK
+            )
+        except PortfolioBacktest.DoesNotExist:
+            return Response(
+                {"error": "回测记录不存在"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"删除失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
