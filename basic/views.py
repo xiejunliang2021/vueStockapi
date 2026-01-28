@@ -841,8 +841,6 @@ class StockPatternView(APIView):
             )
 
 class StrategyStatsView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
-    """策略统计视图
     """策略统计视图
     
     GET: 获取策略统计列表，支持以下过滤：
@@ -852,6 +850,7 @@ class StrategyStatsView(generics.ListCreateAPIView):
     
     POST: 创建新的策略统计记录
     """
+    permission_classes = [IsAuthenticated]
     queryset = StrategyStats.objects.all()
     serializer_class = StrategyStatsSerializer
     filterset_fields = ['date', 'stock']
