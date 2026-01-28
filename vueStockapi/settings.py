@@ -40,6 +40,7 @@ WALLET_PEM_PASS_PHRASE = config('WALLET_PEM_PASS_PHRASE')
 
 INSTALLED_APPS = [
     'drf_spectacular',
+    'drf_spectacular_sidecar',
     'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -282,7 +283,18 @@ LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 if not os.path.exists(LOGS_DIR):
     os.makedirs(LOGS_DIR)
 
-# CORS 配置
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': '股票回测分析平台 API',  # 这里填写你想要的标题
+    'DESCRIPTION': '基于 Django 和 Vue3 的股票分析与回测系统接口文档',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    # 解决国内网络导致页面空白的关键配置
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
+}
+
 # 是否允许所有源访问，生产环境建议设置为 False
 CORS_ALLOW_ALL_ORIGINS = False
 

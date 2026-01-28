@@ -422,6 +422,18 @@ wheels = [
 ]
 
 [[package]]
+name = "drf-spectacular-sidecar"
+version = "2026.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/81/c7b0e3ccbd5a039c4f4fcfecf88391a666ca1406a953886e2f39295b1c90/drf_spectacular_sidecar-2026.1.1.tar.gz", hash = "sha256:6f7c173a8ddbbbdafc7a27e028614b65f07a89ca90f996a432d57460463b56be", size = 2468060, upload-time = "2026-01-01T11:27:12.682Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/96/38725edda526f3e9e597f531beeec94b0ef433d9494f06a13b7636eecb6e/drf_spectacular_sidecar-2026.1.1-py3-none-any.whl", hash = "sha256:af8df62f1b594ec280351336d837eaf2402ab25a6bc2a1fad7aee9935821070f", size = 2489520, upload-time = "2026-01-01T11:27:11.056Z" },
+]
+
+[[package]]
 name = "eventlet"
 version = "0.40.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1064,6 +1076,12 @@ wheels = [
 ]
 
 [[package]]
+name = "uwsgi"
+version = "2.0.31"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9f/49/2f57640e889ba509fd1fae10cccec1b58972a07c2724486efba94c5ea448/uwsgi-2.0.31.tar.gz", hash = "sha256:e8f8b350ccc106ff93a65247b9136f529c14bf96b936ac5b264c6ff9d0c76257", size = 822796, upload-time = "2025-10-11T19:17:28.794Z" }
+
+[[package]]
 name = "vine"
 version = "5.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1086,6 +1104,7 @@ dependencies = [
     { name = "django-filter" },
     { name = "djangorestframework" },
     { name = "drf-spectacular" },
+    { name = "drf-spectacular-sidecar" },
     { name = "eventlet" },
     { name = "mysqlclient" },
     { name = "oracledb" },
@@ -1095,6 +1114,7 @@ dependencies = [
     { name = "redis" },
     { name = "setuptools" },
     { name = "tushare" },
+    { name = "uwsgi" },
 ]
 
 [package.optional-dependencies]
@@ -1117,6 +1137,7 @@ requires-dist = [
     { name = "django-filter", specifier = ">=23.0" },
     { name = "djangorestframework", specifier = ">=3.14" },
     { name = "drf-spectacular", specifier = ">=0.26" },
+    { name = "drf-spectacular-sidecar", specifier = ">=2026.1.1" },
     { name = "eventlet", specifier = ">=0.33" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "mysqlclient", specifier = ">=2.2" },
@@ -1129,6 +1150,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0" },
     { name = "setuptools", specifier = "<81" },
     { name = "tushare", specifier = ">=1.2" },
+    { name = "uwsgi", specifier = ">=2.0.31" },
 ]
 provides-extras = ["dev"]
 

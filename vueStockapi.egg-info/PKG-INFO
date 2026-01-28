@@ -22,6 +22,8 @@ Requires-Dist: eventlet>=0.33
 Requires-Dist: tushare>=1.2
 Requires-Dist: drf-spectacular>=0.26
 Requires-Dist: backtrader>=1.9
+Requires-Dist: uwsgi>=2.0.31
+Requires-Dist: drf-spectacular-sidecar>=2026.1.1
 Provides-Extra: dev
 Requires-Dist: pytest>=7.4; extra == "dev"
 Requires-Dist: pytest-django>=4.5; extra == "dev"
