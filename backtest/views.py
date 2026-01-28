@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
 from .models import PortfolioBacktest, TradeLog
 from .serializers import BatchBacktestRequestSerializer, PortfolioBacktestSerializer, TradeLogSerializer
 from .tasks import run_portfolio_backtest
@@ -11,11 +12,13 @@ class PortfolioBacktestResultListView(ListAPIView):
     queryset = PortfolioBacktest.objects.all()
     serializer_class = PortfolioBacktestSerializer
     filterset_fields = ['strategy_name', 'start_date', 'end_date']
+    permission_classes = [IsAuthenticated]
 
 class BatchPortfolioBacktestView(APIView):
     """
     执行新的、基于投资组合的批量回测任务。
     """
+    permission_classes = [IsAuthenticated]
     def post(self, request, *args, **kwargs):
         serializer = BatchBacktestRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -39,6 +42,7 @@ class BatchPortfolioBacktestView(APIView):
 class TradeLogListView(ListAPIView):
     """获取指定回测的交易日志列表"""
     serializer_class = TradeLogSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         backtest_id = self.kwargs.get('backtest_id')
@@ -46,6 +50,7 @@ class TradeLogListView(ListAPIView):
 
 class PortfolioBacktestDeleteView(APIView):
     """删除指定的回测记录"""
+    permission_classes = [IsAuthenticated]
     
     def delete(self, request, backtest_id, *args, **kwargs):
         try:

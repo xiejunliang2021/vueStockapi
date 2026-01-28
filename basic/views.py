@@ -5,6 +5,7 @@ from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from .analysis import ContinuousLimitStrategy
 from datetime import datetime
 from .utils import StockDataFetcher
@@ -12,6 +13,8 @@ from django.db import models
 from django.db.models import Min, Max, Avg, Count
 
 class PolicyDetailsListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    """策略详情列表和创建视图"""
     """策略详情列表和创建视图"""
     queryset = PolicyDetails.objects.all()
     serializer_class = PolicyDetailsSerializer
@@ -20,6 +23,8 @@ class PolicyDetailsListCreateView(generics.ListCreateAPIView):
 
 
 class CodeListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    """股票代码列表和创建视图"""
     """股票代码列表和创建视图"""
     queryset = Code.objects.all()
     serializer_class = CodeSerializer
@@ -27,12 +32,16 @@ class CodeListCreateView(generics.ListCreateAPIView):
     filterset_fields = ['ts_code', 'name', 'industry', 'symbol']
 
 class CodeRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    """股票代码详情、更新和删除视图"""
     """股票代码详情、更新和删除视图"""
     queryset = Code.objects.all()
     serializer_class = CodeSerializer
     lookup_field = 'ts_code'
 
 class ManualStrategyAnalysisView(APIView):
+    permission_classes = [IsAuthenticated]
+    """手动策略分析视图"""
     """手动策略分析视图"""
     
     def analyze_signals(self, start_date, end_date, stock_code=None):
@@ -395,6 +404,8 @@ class ManualStrategyAnalysisView(APIView):
             )
 
 class TradingCalendarListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    """交易日历列表和创建视图"""
     """交易日历列表和创建视图"""
     queryset = TradingCalendar.objects.all()
     serializer_class = TradingCalendarSerializer
@@ -414,12 +425,16 @@ class TradingCalendarListCreateView(generics.ListCreateAPIView):
         return super().post(request, *args, **kwargs)
 
 class TradingCalendarDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    """交易日历详情、更新和删除视图"""
     """交易日历详情、更新和删除视图"""
     queryset = TradingCalendar.objects.all()
     serializer_class = TradingCalendarSerializer
     lookup_field = 'date'
 
 class CheckTradingDayView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    """检查指定日期是否为交易日"""
     """检查指定日期是否为交易日"""
     
     def get(self, request):
@@ -461,6 +476,8 @@ class CheckTradingDayView(generics.GenericAPIView):
             )
 
 class StockDailyDataUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']
     http_method_names = ['get', 'post']
     
     """股票日线数据更新和查询视图
@@ -618,6 +635,8 @@ class StockDailyDataUpdateView(APIView):
             )
 
 class StockPatternView(APIView):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']
     http_method_names = ['get', 'post']
     
     """股票模式分析和查询视图
@@ -822,6 +841,8 @@ class StockPatternView(APIView):
             )
 
 class StrategyStatsView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    """策略统计视图
     """策略统计视图
     
     GET: 获取策略统计列表，支持以下过滤：
@@ -941,6 +962,8 @@ class StrategyStatsView(generics.ListCreateAPIView):
             )
 
 class TradingSignalsAnalysisView(APIView):
+    permission_classes = [IsAuthenticated]
+    """交易信号分析视图"""
     """交易信号分析视图"""
     
     def post(self, request):
