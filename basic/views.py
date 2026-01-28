@@ -961,9 +961,8 @@ class StrategyStatsView(generics.ListCreateAPIView):
             )
 
 class TradingSignalsAnalysisView(APIView):
+    """交易信号分析视图"""
     permission_classes = [IsAuthenticated]
-    """交易信号分析视图"""
-    """交易信号分析视图"""
     
     def post(self, request):
         """处理交易信号分析请求
