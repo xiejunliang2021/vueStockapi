@@ -3,7 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
+*.pid
+*.ini  # 如果你的 ini 文件在不同环境下完全不同，也可以考虑忽略
 # 忽略虚拟环境
 venv/
 env/

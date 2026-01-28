@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.10.*"
 
 [[package]]
@@ -606,16 +606,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mysqlclient"
-version = "2.2.7"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/61/68/810093cb579daae426794bbd9d88aa830fae296e85172d18cb0f0e5dd4bc/mysqlclient-2.2.7.tar.gz", hash = "sha256:24ae22b59416d5fcce7e99c9d37548350b4565baac82f95e149cac6ce4163845", size = 91383, upload-time = "2025-01-10T12:06:00.763Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/24/cdaaef42aac7d53c0a01bb638da64961c293b1b6d204efd47400a68029d4/mysqlclient-2.2.7-cp310-cp310-win_amd64.whl", hash = "sha256:2e3c11f7625029d7276ca506f8960a7fd3c5a0a0122c9e7404e6a8fe961b3d22", size = 207748, upload-time = "2025-01-10T11:56:24.357Z" },
-    { url = "https://files.pythonhosted.org/packages/16/cc/5b1570be9f8597ee41e2a0bd7b62ba861ec2c81898d9449f3d6bfbe15d29/mysqlclient-2.2.7-pp310-pypy310_pp73-win_amd64.whl", hash = "sha256:92af368ed9c9144737af569c86d3b6c74a012a6f6b792eb868384787b52bb585", size = 207800, upload-time = "2025-01-10T11:56:36.023Z" },
-]
-
-[[package]]
 name = "numpy"
 version = "2.2.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1106,7 +1096,6 @@ dependencies = [
     { name = "drf-spectacular" },
     { name = "drf-spectacular-sidecar" },
     { name = "eventlet" },
-    { name = "mysqlclient" },
     { name = "oracledb" },
     { name = "pandas" },
     { name = "pymysql" },
@@ -1140,7 +1129,6 @@ requires-dist = [
     { name = "drf-spectacular-sidecar", specifier = ">=2026.1.1" },
     { name = "eventlet", specifier = ">=0.33" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=6.0" },
-    { name = "mysqlclient", specifier = ">=2.2" },
     { name = "oracledb", specifier = ">=2.0,<3.0" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pymysql", specifier = ">=1.1" },

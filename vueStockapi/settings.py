@@ -9,15 +9,16 @@ import logging
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Initialize Oracle client
-try:
-    wallet_location = config('WALLET_LOCATION')
-    if wallet_location and os.path.exists(wallet_location):
-        oracledb.init_oracle_client(config_dir=wallet_location)
-        logging.info(f"Oracle client initialized with wallet location: {wallet_location}")
-    else:
-        logging.warning(f"Oracle wallet location not found or not configured: {wallet_location}")
-except Exception as e:
-    logging.error(f"Error initializing Oracle client: {e}")
+# Initialize Oracle client
+# try:
+#     wallet_location = config('WALLET_LOCATION')
+#     if wallet_location and os.path.exists(wallet_location):
+#         oracledb.init_oracle_client(config_dir=wallet_location)
+#         logging.info(f"Oracle client initialized with wallet location: {wallet_location}")
+#     else:
+#         logging.warning(f"Oracle wallet location not found or not configured: {wallet_location}")
+# except Exception as e:
+#     logging.error(f"Error initializing Oracle client: {e}")
 
 
 # Quick-start development settings - unsuitable for production
@@ -283,7 +284,6 @@ LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 if not os.path.exists(LOGS_DIR):
     os.makedirs(LOGS_DIR)
 
-
 SPECTACULAR_SETTINGS = {
     'TITLE': '股票回测分析平台 API',  # 这里填写你想要的标题
     'DESCRIPTION': '基于 Django 和 Vue3 的股票分析与回测系统接口文档',
@@ -295,13 +295,11 @@ SPECTACULAR_SETTINGS = {
     'REDOC_DIST': 'SIDECAR',
 }
 
-# 是否允许所有源访问，生产环境建议设置为 False
+# CORS 配置
+# 开发环境：允许所有源访问（生产环境应该设置为 False）
 CORS_ALLOW_ALL_ORIGINS = False
 
-CORS_ALLOW_CREDENTIALS = True
-
-# 添加更多的 CORS 配置
-# 允许访问的源列表，当 CORS_ALLOW_ALL_ORIGINS 为 False 时生效
+# 允许访问的源列表
 CORS_ALLOWED_ORIGINS = [
     "https://www.huabenwuxin.com",  # 生产环境域名
     "http://localhost:5173",        # 开发环境域名
@@ -337,25 +335,10 @@ CORS_ALLOW_HEADERS = [
 # 预检请求（OPTIONS）的缓存时间（秒）
 CORS_PREFLIGHT_MAX_AGE = 86400  # 24小时
 
-# 是否允许处理非标准的 Content-Type 头
-CORS_ALLOW_NON_STANDARD_CONTENT_TYPE = False
-
-# 是否在响应中添加 Vary: Origin 头
-CORS_VARY_HEADER = True
-
 # 是否允许特定的 HTTP 头暴露给 JavaScript
 CORS_EXPOSE_HEADERS = [
     'content-disposition',  # 允许前端访问下载文件名
 ]
-
-# URL 正则表达式，只对匹配的 URL 启用 CORS
-CORS_URLS_REGEX = r'^/api/.*$'  # 只对 /api/ 开头的 URL 启用 CORS
-
-# 是否检查请求头中的 Host 是否与 Django 的 ALLOWED_HOSTS 匹配
-CORS_ORIGIN_ALLOW_ALL = False
-
-# 是否允许请求中包含通配符
-CORS_ALLOW_WILDCARDS = False
 
 # 添加 Celery 配置
 CELERY_BROKER_POOL_LIMIT = 10  # 限制连接池大小
