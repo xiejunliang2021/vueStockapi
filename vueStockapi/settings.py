@@ -53,9 +53,10 @@ INSTALLED_APPS = [
     'weighing',
     'backtest',
     'rest_framework',
+    'rest_framework_simplejwt',  # JWT 认证
     'django_filters',
     'django_celery_beat',
-    'django_celery_results'
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -349,3 +350,26 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 限制预取任务数
 DJANGO_CELERY_BEAT_TZ_AWARE = False
 CELERY_BEAT_MAX_LOOP_INTERVAL = 5  # 降低循环间隔
 CELERY_BEAT_SYNC_EVERY = 1  # 每次循环都同步数据库
+# REST Framework 配置
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',  # 默认需要认证
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+
+# JWT 配置
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': False,  # 暂时不启用黑名单
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+}
