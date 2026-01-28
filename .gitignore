@@ -7,6 +7,7 @@ __pycache__/
 # 忽略虚拟环境
 venv/
 env/
+.venv/
 
 # 忽略数据库文件
 *.sqlite3
@@ -14,8 +15,12 @@ env/
 # 忽略环境变量文件
 .env
 
+# 忽略uwsgi文件
+uwsgi*
+
 # 忽略日志文件
 *.log
+*.log.*
 
 # 忽略用户上传的文件
 media/

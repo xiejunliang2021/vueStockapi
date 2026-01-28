@@ -8,6 +8,17 @@ import logging
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Initialize Oracle client
+try:
+    wallet_location = config('WALLET_LOCATION')
+    if wallet_location and os.path.exists(wallet_location):
+        oracledb.init_oracle_client(config_dir=wallet_location)
+        logging.info(f"Oracle client initialized with wallet location: {wallet_location}")
+    else:
+        logging.warning(f"Oracle wallet location not found or not configured: {wallet_location}")
+except Exception as e:
+    logging.error(f"Error initializing Oracle client: {e}")
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -20,10 +31,15 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*' ]
 
+# 定义钱包相关路径和密码
+WALLET_DIRECTORY = config('WALLET_DIRECTORY')
+WALLET_PEM_PASS_PHRASE = config('WALLET_PEM_PASS_PHRASE')
+
 
 # Application definition
 
 INSTALLED_APPS = [
+    'drf_spectacular',
     'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -33,8 +49,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'basic',
     'weighing',
+    'backtest',
     'rest_framework',
-    'coreapi',
     'django_filters',
     'django_celery_beat',
     'django_celery_results'
@@ -75,12 +91,33 @@ WSGI_APPLICATION = 'vueStockapi.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+# DATABASES = {
+#
+
+    # 'default': {
+    #     'ENGINE': 'django.db.backends.oracle',
+    #     'NAME': config('NAME_ORACLE',),
+    #     'USER': config('USER_ORACLE',),
+    #     'PASSWORD': config('PASSWORD_ORACLE',),
+    #     'HOST': '',
+    #     'PORT': '',
+    #     'CONN_MAX_AGE': 0,  # 禁用连接持久化
+    #     'OPTIONS': {
+    #         'retry_count': 3,
+    #         'retry_delay': 1,
+    #         'ssl_server_dn_match': True,
+    #     },
+    #     'TEST': {
+    #         'NAME': 'test_' + config('NAME_ORACLE',),
+    #     },
+    # },
+# }
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.oracle',
-        'NAME': config('NAME_ORACLE',),
-        'USER': config('USER_ORACLE',),
-        'PASSWORD': config('PASSWORD_ORACLE',),
+        'NAME': config('NAME_ORACLE', ),
+        'USER': config('USER_ORACLE', ),
+        'PASSWORD': config('PASSWORD_ORACLE', ),
         'HOST': '',
         'PORT': '',
         'CONN_MAX_AGE': 0,  # 禁用连接持久化
@@ -88,18 +125,22 @@ DATABASES = {
             'retry_count': 3,
             'retry_delay': 1,
             'ssl_server_dn_match': True,
-        },
-        'TEST': {
-            'NAME': 'test_' + config('NAME_ORACLE',),
-        },
+            # 这些选项会传递给 python-oracledb 驱动
+            'config_dir': WALLET_DIRECTORY,
+            'wallet_location': WALLET_DIRECTORY,  # 通常与 config_dir 相同
+            'wallet_password': WALLET_PEM_PASS_PHRASE,  # 钱包的密码 (PEM pass phrase)
+
+        }
+
     },
-    'mysql_db': {
+    'mysql': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'weighing',
+        'NAME': 'quant',
         'USER': config('USER_MYSQL'),
         'PASSWORD': config('PASSWORD_MYSQL'),
-        'HOST': '127.0.0.1',
+        'HOST': config('HOST'),
         'PORT': '3306',
+        'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'charset': 'utf8mb4',
         }
@@ -151,7 +192,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # DRF配置鉴权方式
 REST_FRAMEWORK = {
-    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend',),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
@@ -165,8 +206,8 @@ DOCS_ROOT = os.path.join(BASE_DIR, 'docs')
 DOCS_ACCESS = 'public'
 
 # Celery Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -228,6 +269,11 @@ LOGGING = {
             'level': 'WARNING',
             'propagate': True,
         },
+        'backtest': {
+            'handlers': ['console'],  # 只输出到控制台,方便实时查看
+            'level': 'INFO',  # 设置为 INFO 级别,显示详细的回测过程
+            'propagate': False,  # 不传播到父logger
+        },
     },
 }
 
@@ -247,6 +293,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "https://www.huabenwuxin.com",  # 生产环境域名
     "http://localhost:5173",        # 开发环境域名
+    "http://127.0.0.1:5173",        # 同样添加 127.0.0.1
 ]
 
 # 是否允许携带认证信息（cookies, HTTP authentication）

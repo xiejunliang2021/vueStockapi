@@ -17,11 +17,17 @@ logger = logging.getLogger(__name__)
 
 # 初始化 Tushare
 ts.set_token(config("TUSHARE_TOKEN"))
-pro = ts.pro_api()
+# pro = ts.pro_api() # DEPRECATED: Avoid top-level API calls
+
+
+def get_pro_api():
+    """Get a Tushare Pro API instance."""
+    return ts.pro_api()
 
 
 def fetch_and_save_stock_data():
     # 获取股票数据
+    pro = get_pro_api()
     df = pro.stock_basic(list_status='L', fields='ts_code,symbol,name,area,industry,market,list_status,list_date')
 
     for index, row in df.iterrows():

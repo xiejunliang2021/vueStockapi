@@ -1,10 +1,22 @@
 from __future__ import absolute_import, unicode_literals
+
+import sys
+
+# Conditionally apply eventlet monkey patching only when running celery worker.
+# This prevents conflicts with other management commands like runserver.
+if 'celery' in sys.argv[0] or 'celery' in ' '.join(sys.argv):
+    if 'eventlet' in ' '.join(sys.argv):
+        import eventlet
+        eventlet.monkey_patch()
+        print("Eventlet monkey patching applied for Celery worker.")
+
 import os
 from celery import Celery
 from django.conf import settings
 import logging
 from celery.schedules import crontab
-from celery.signals import task_failure, worker_ready
+from celery.signals import task_failure, worker_ready, worker_process_init
+from django.db import close_old_connections
 from celery.exceptions import MaxRetriesExceededError
 from django.utils import timezone
 
@@ -87,6 +99,14 @@ app.conf.update(
 def at_start(sender, **kwargs):
     """当 worker 启动时执行的操作"""
     print("Celery worker is ready!")
+
+
+@worker_process_init.connect
+def close_db_connections(**kwargs):
+    """在 Celery 工作进程启动时关闭所有旧的数据库连接"""
+    close_old_connections()
+    print("Old database connections closed for new worker process.")
+
 
 if __name__ == '__main__':
     app.start() 

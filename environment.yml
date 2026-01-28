@@ -1,0 +1,27 @@
+name: stockapi
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pandas
+  - django
+  - djangorestframework
+  - oracledb
+  - mysqlclient
+  - pymysql
+  - celery
+  - redis
+  - django-celery-beat
+  - django-celery-results
+  - django-filter
+  - django-cors-headers
+  - python-decouple
+  - setuptools<81
+  - eventlet  # 在Windows上启动celery需要额外安装执行并发
+  # - uwsgi
+  - pip:
+    - tushare
+    - drf-spectacular
+    - backtrader
+

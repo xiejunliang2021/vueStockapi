@@ -6,4 +6,12 @@ from .celery import app as celery_app
 import pymysql
 pymysql.install_as_MySQLdb()
 
+# Configure oracledb to work as cx_Oracle
+try:
+    import oracledb
+    import sys
+    sys.modules['cx_Oracle'] = oracledb
+except ImportError:
+    pass
+
 __all__ = ('celery_app',)

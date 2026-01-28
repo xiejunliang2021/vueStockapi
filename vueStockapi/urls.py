@@ -16,12 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include, re_path
-from rest_framework.documentation import include_docs_urls
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("api/basics/", include('basic.urls')),
     path("api/weighing/", include('weighing.urls')),
-    # 添加接口文档的路由
-    re_path(r'^docs/', include_docs_urls(title='接口文档')),
-    ]
+    path("api/backtest/", include('backtest.urls')),
+    # DRF-Spectacular API文档路由
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # 可选的UI界面:
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+]
