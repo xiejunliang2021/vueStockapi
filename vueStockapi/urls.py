@@ -37,9 +37,9 @@ urlpatterns = [
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     
     # 业务 API
-    path('api/', include('basic.urls')),
-    path('api/', include('backtest.urls')),
-    path('api/', include('weighing.urls')),
+    path('api/basics/', include('basic.urls')),
+    path('api/backtest/', include('backtest.urls')),
+    path('api/weighing/', include('weighing.urls')),
 ]
 
 # 静态文件和媒体文件配置

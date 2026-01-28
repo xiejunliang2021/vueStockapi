@@ -30,6 +30,6 @@ urlpatterns = [
     # 策略统计
     path('strategy-stats/', StrategyStatsView.as_view(), name='strategy-stats'),
     # 交易信号分析路由
-    path('api/trading/signals/analyze/', views.TradingSignalsAnalysisView.as_view(), name='analyze-trading-signals'),
+    path('trading/signals/analyze/', views.TradingSignalsAnalysisView.as_view(), name='analyze-trading-signals'),
 ]
 
