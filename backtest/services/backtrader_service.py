@@ -436,9 +436,9 @@ class BacktraderBacktestService:
                     'buy_price': Decimal(str(trade_record['买入价格'])),
                     'sell_date': trade_record['卖出日期'],
                     'sell_price': Decimal(str(trade_record['卖出价格'])),
-                    'quantity': 100,  # 默认值，策略中未记录
+                    'quantity': int(trade_record['数量']),  # ✅ 从策略记录中获取实际数量
                     'profit': Decimal(str(trade_record['盈亏金额'])),
-                    'return_rate': Decimal(str(trade_record['收益率'].replace('%', ''))) / 100,
+                    'return_rate': Decimal(str(trade_record['收益率'])),  # ✅ 已经是小数格式（0.1018表示10.18%）
                     'sell_reason': trade_record['卖出原因'],
                     'strategy_type': '连续涨停',
                     # 扩展字段

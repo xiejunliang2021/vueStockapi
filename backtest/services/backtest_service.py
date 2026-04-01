@@ -50,15 +50,16 @@ class Portfolio:
             是否成功买入
         """
         if not self.can_buy(capital_to_invest):
-            logger.warning(f"{date}: 资金不足，无法买入 {stock_code}")
+            logger.warning(f"{date}: 资金不足，无法买入 {stock_code}，需要 {capital_to_invest:.2f}，可用 {self.cash:.2f}")
             return False
         
         price = Decimal(str(price))
         # 100股为一手
+        # 计算公式: int(投资金额 / 股价 / 100) * 100
         quantity = int(capital_to_invest / price / 100) * 100
         
         if quantity == 0:
-            logger.warning(f"{date}: 计算股数为0，无法买入 {stock_code}")
+            logger.warning(f"{date}: 计算股数为0，无法买入 {stock_code}，投资金额 {capital_to_invest:.2f}，股价 {price:.2f}")
             return False
         
         cost = quantity * price
@@ -72,7 +73,7 @@ class Portfolio:
             strategy_type=strategy_type
         )
         
-        logger.info(f"{date}: 买入 {stock_code} {quantity}股 @ {price:.2f}, 花费 {cost:.2f}")
+        logger.info(f"{date}: ✅ 买入 {stock_code} | 投资金额: {capital_to_invest:.2f} | 股价: {price:.2f} | 数量: {quantity}股 | 实际花费: {cost:.2f} | 剩余资金: {self.cash:.2f}")
         return True
     
     def sell(self, stock_code: str, price: float, date: date) -> Optional[Dict]:
@@ -91,24 +92,31 @@ class Portfolio:
         proceeds = position.quantity * price
         self.cash += proceeds
         
-        # 计算盈亏
+        # 计算盈亏 - 确保使用Decimal类型精确计算
         profit = (price - position.entry_price) * position.quantity
         return_rate = (price / position.entry_price) - Decimal('1')
+        
+        # 持仓天数
+        hold_days = (date - position.entry_date).days
         
         trade_log = {
             'stock_code': stock_code,
             'buy_date': position.entry_date,
-            'buy_price': position.entry_price,
+            'buy_price': position.entry_price,  # Decimal类型
             'sell_date': date,
-            'sell_price': price,
-            'quantity': position.quantity,
-            'profit': profit,
-            'return_rate': return_rate,
+            'sell_price': price,  # Decimal类型
+            'quantity': position.quantity,  # int类型
+            'profit': profit,  # Decimal类型
+            'return_rate': return_rate,  # Decimal类型
             'strategy_type': position.strategy_type,
         }
         
-        logger.info(f"{date}: 卖出 {stock_code} {position.quantity}股 @ {price:.2f}, "
-                   f"盈亏 {profit:.2f} ({return_rate*100:.2f}%)")
+        logger.info(
+            f"{date}: 💰 卖出 {stock_code} | 数量: {position.quantity}股 | "
+            f"买入价: {position.entry_price:.2f} | 卖出价: {price:.2f} | "
+            f"盈亏: {profit:.2f} ({return_rate*100:.2f}%) | "
+            f"持仓: {hold_days}天 | 回款: {proceeds:.2f} | 剩余资金: {self.cash:.2f}"
+        )
         return trade_log
     
     def get_total_value(self, current_prices: Dict[str, Dict]) -> Decimal:
@@ -400,6 +408,16 @@ class BacktestService:
         
         # 批量保存交易日志
         if trade_logs:
+            # 调试：输出第一笔交易的详细信息
+            if len(trade_logs) > 0:
+                first_trade = trade_logs[0]
+                logger.info(f"📋 第一笔交易详情: {first_trade['stock_code']}")
+                logger.info(f"   买入价: {first_trade['buy_price']} (类型: {type(first_trade['buy_price']).__name__})")
+                logger.info(f"   卖出价: {first_trade['sell_price']} (类型: {type(first_trade['sell_price']).__name__})")
+                logger.info(f"   数量: {first_trade['quantity']} (类型: {type(first_trade['quantity']).__name__})")
+                logger.info(f"   盈亏: {first_trade['profit']} (类型: {type(first_trade['profit']).__name__})")
+                logger.info(f"   收益率: {first_trade['return_rate']} (类型: {type(first_trade['return_rate']).__name__})")
+            
             trade_log_objects = [
                 TradeLog(portfolio_backtest=portfolio_result, **log)
                 for log in trade_logs

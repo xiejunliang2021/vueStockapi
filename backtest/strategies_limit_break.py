@@ -29,6 +29,7 @@ class LimitBreakStrategy(bt.Strategy):
         """初始化策略变量"""
         self.order = None              # 当前订单
         self.buy_price = None          # 实际买入价
+        self.buy_quantity = 0          # ✅ 实际买入数量
         self.sell_price = None         # 实际卖出价
         self.buy_date = None           # 买入日期
         self.sell_date = None          # 卖出决定日期（调用close的日期）
@@ -418,10 +419,12 @@ class LimitBreakStrategy(bt.Strategy):
 
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log(f'买入成交 | 价格: {order.executed.price:.2f} | 成本: {order.executed.value:.2f}', level=logging.INFO)
+                # ✅ 记录实际买入数量
+                self.buy_quantity = int(abs(order.executed.size))
+                self.log(f'✅ 买入成交 | 价格:{order.executed.price:.2f} | 数量:{self.buy_quantity}股 | 成本:{order.executed.value:.2f}', level=logging.INFO)
             elif order.issell():
-                self.sell_price = order.executed.price  # ✅ 记录卖出价
-                self.log(f'卖出成交 | 价格: {order.executed.price:.2f} | 收益: {order.executed.pnl:.2f}', level=logging.INFO)
+                self.sell_price = order.executed.price  # 记录卖出价
+                self.log(f'💸 卖出成交 | 价格:{order.executed.price:.2f} | 数量:{self.buy_quantity}股 | 收益:{order.executed.pnl:.2f}', level=logging.INFO)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             if order.status == order.Margin:
@@ -435,8 +438,8 @@ class LimitBreakStrategy(bt.Strategy):
     def notify_trade(self, trade):
         """交易完成通知"""
         if trade.isclosed:
-            # ✅ 手动计算盈亏（不信任 trade.pnlcomm）
-            quantity = abs(trade.size)  # 交易数量
+            # ✅ 使用记录的买入数量，而不是trade.size（可能为0）
+            quantity = self.buy_quantity if self.buy_quantity > 0 else abs(trade.size)
             
             # 使用记录的卖出价，如果没有则使用 trade.price
             actual_sell_price = self.sell_price if self.sell_price else trade.price
@@ -462,16 +465,17 @@ class LimitBreakStrategy(bt.Strategy):
                 profit_rate = 0.0
                 self.log(f'警告：买入成本为0，无法计算收益率', level=logging.WARNING)
             
-            # 记录交易
+            # 记录交易 - 包含数量和数值类型的盈亏、收益率
             trade_record = {
                 '买入日期': self.buy_date.strftime('%Y-%m-%d') if self.buy_date else 'N/A',
                 '卖出日期': self.sell_date.strftime('%Y-%m-%d') if self.sell_date else 'N/A',  # ✅ 使用决定卖出的日期
                 '买入价格': actual_buy_price,
                 '卖出价格': actual_sell_price,
+                '数量': quantity,  # ✅ 记录实际买入数量
                 '持仓天数': self.hold_days,
                 '卖出原因': self.sell_reason or '未知',
-                '盈亏金额': round(profit, 2),
-                '收益率': f'{profit_rate:.2f}%',
+                '盈亏金额': round(profit, 2),  # 数值类型
+                '收益率': profit_rate / 100,  # ✅ 存储为小数（例如0.1018表示10.18%），而不是字符串
                 # 买点差值跟踪数据
                 '最小差值': round(self.min_diff_to_target, 2) if self.min_diff_to_target is not None else 'N/A',
                 '最小差值日期': self.min_diff_date.strftime('%Y-%m-%d') if self.min_diff_date else 'N/A',
@@ -486,4 +490,4 @@ class LimitBreakStrategy(bt.Strategy):
             else:
                 self.loss_count += 1
             
-            self.log(f'交易完成 | 买入:{actual_buy_price:.2f} | 卖出:{actual_sell_price:.2f} | 数量:{quantity} | 盈亏: {profit:.2f} | 收益率: {profit_rate:.2f}% | 原因: {self.sell_reason}', level=logging.INFO)
+            self.log(f'💰 交易完成 | 买入:{actual_buy_price:.2f} | 卖出:{actual_sell_price:.2f} | 数量:{quantity}股 | 盈亏:{profit:.2f} | 收益率:{profit_rate:.2f}% | 原因:{self.sell_reason}', level=logging.INFO)

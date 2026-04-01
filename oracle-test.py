@@ -14,6 +14,7 @@ def run_app():
         db_password = config('PASSWORD_ORACLE')
         tns_name = config('NAME_ORACLE')
         wallet_directory = config('WALLET_DIRECTORY')
+        wallet_password = config('WALLET_PEM_PASS_PHRASE', default='')
 
         logging.info(f"Attempting to connect with user '{db_user}' and TNS name '{tns_name}'.")
         logging.info(f"Using wallet directory: '{wallet_directory}'")
@@ -23,18 +24,23 @@ def run_app():
             logging.error(f"Wallet directory not found at the specified path: {wallet_directory}")
             return
 
-        # Initialize the Oracle client with the wallet configuration.
-        # This is crucial for establishing a secure connection using the wallet.
-        oracledb.init_oracle_client(config_dir=wallet_directory)
-        logging.info("Oracle client initialized successfully.")
+        # Connect using Thin mode (no Oracle Client needed)
+        # Pass config_dir and wallet_location directly to create_pool
+        logging.info("Using python-oracledb Thin mode.")
 
         # Create a connection pool using the wallet configuration
         # The 'dsn' should be the TNS alias defined in your tnsnames.ora file (part of the wallet)
-        pool = oracledb.create_pool(
-            user=db_user,
-            password=db_password,
-            dsn=tns_name,
-        )
+        pool_kwargs = {
+            'user': db_user,
+            'password': db_password,
+            'dsn': tns_name,
+            'config_dir': wallet_directory,
+            'wallet_location': wallet_directory,
+        }
+        if wallet_password:
+            pool_kwargs['wallet_password'] = wallet_password
+            
+        pool = oracledb.create_pool(**pool_kwargs)
         logging.info("Connection pool created.")
 
         logging.info("Acquiring connection from pool...")
