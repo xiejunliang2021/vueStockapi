@@ -30,6 +30,8 @@ urlpatterns = [
     path('api/auth/user/', auth_views.get_user_info, name='user-info'),
     path('api/auth/logout/', auth_views.logout, name='logout'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('api/auth/profile/update/', auth_views.update_user_info, name='profile-update'),
+    path('api/auth/password/change/', auth_views.change_password, name='password-change'),
     
     # API 文档
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
