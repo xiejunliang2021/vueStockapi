@@ -161,6 +161,7 @@ class Code(models.Model):
     class Meta:
         verbose_name = "股票信息"
         verbose_name_plural = "股票信息"
+        ordering = ['ts_code']  # 修复：分页时确保结果有序，避免 UnorderedObjectListWarning
 
     def __str__(self):
         return f"{self.ts_code} - {self.name}"

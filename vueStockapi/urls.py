@@ -23,7 +23,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from . import auth_views
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('mgmt-console/', admin.site.urls),  # 安全加固：Admin 路径不使用默认的 /admin/
     
     # 认证相关 API
     path('api/auth/login/', auth_views.login, name='login'),

@@ -6,6 +6,8 @@ import traceback
 
 from .services.backtest_service import BacktestService
 from .services.backtrader_service import BacktraderBacktestService
+from utils.telegram import send_telegram_message
+
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,27 @@ def run_portfolio_backtest(self, filters, backtest_params):
         logger.info(f"✅ 回测任务完成 ({engine_name})")
         logger.info("="*60)
         
+        # 发送 Telegram 通知
+        try:
+            status_icon = "✅" if result.get('status') == 'SUCCESS' else "⚠️"
+            msg = f"{status_icon} **回测任务执行完毕** ({engine_name})\n"
+            msg += f"策略: {strategy_name} ({strategy_type})\n"
+            msg += f"区间: {start_date} ~ {end_date}\n"
+            
+            if result.get('status') == 'SUCCESS':
+                total_return = float(result.get('total_return', 0)) * 100
+                trade_count = len(result.get('trades', []))
+                msg += f"状态: 成功\n"
+                msg += f"总收益率: {total_return:.2f}%\n"
+                msg += f"交易次数: {trade_count}次\n"
+            else:
+                msg += f"状态: {result.get('status', '未知')}\n"
+                msg += f"信息: {result.get('message', '无详细信息')}\n"
+            
+            send_telegram_message(msg)
+        except Exception as tg_e:
+            logger.error(f"发送 Telegram 通知报错: {tg_e}")
+        
         return result
         
     except Exception as e:
@@ -138,4 +161,12 @@ def run_portfolio_backtest(self, filters, backtest_params):
         logger.error("❌ 回测任务失败")
         logger.error(error_msg)
         logger.error("="*60)
+        
+        # 发送错误通知到 Telegram
+        try:
+            msg = f"❌ **回测任务异常崩溃**\n错误: {str(e)}"
+            send_telegram_message(msg)
+        except Exception as tg_e:
+            logger.error(f"发送 Telegram 错误通知失败: {tg_e}")
+            
         return {'status': 'FAILURE', 'error': error_msg}

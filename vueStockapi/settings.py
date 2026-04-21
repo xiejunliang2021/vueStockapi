@@ -193,16 +193,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# DRF配置鉴权方式
-REST_FRAMEWORK = {
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend',),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
-    ],
-}
+# DRF 配置（已合并，请勿重复定义）
+# 完整配置见下方 REST_FRAMEWORK 块
 
 # 添加文档相关配置
 DOCS_ROOT = os.path.join(BASE_DIR, 'docs')
@@ -350,13 +342,17 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 限制预取任务数
 DJANGO_CELERY_BEAT_TZ_AWARE = False
 CELERY_BEAT_MAX_LOOP_INTERVAL = 5  # 降低循环间隔
 CELERY_BEAT_SYNC_EVERY = 1  # 每次循环都同步数据库
-# REST Framework 配置
+# REST Framework 完整配置（唯一定义）
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',  # 默认需要认证
+    ],
+    # django-filters 过滤后端（之前被重复配置覆盖导致丢失，已修复）
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
