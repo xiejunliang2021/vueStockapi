@@ -149,7 +149,12 @@ def run_portfolio_backtest(self, filters, backtest_params):
                 msg += f"状态: {result.get('status', '未知')}\n"
                 msg += f"信息: {result.get('message', '无详细信息')}\n"
             
-            send_telegram_message(msg)
+logger.info("📡 正在发送 Telegram 通知...")
+sent = send_telegram_message(msg)
+if sent:
+    logger.info("✅ Telegram 通知发送成功")
+else:
+    logger.warning("❌ Telegram 通知发送失败，请检查配置或日志")
         except Exception as tg_e:
             logger.error(f"发送 Telegram 通知报错: {tg_e}")
         

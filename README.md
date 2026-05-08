@@ -16,69 +16,55 @@
 
 ## 🏗️ 技术架构
 
-- **后端框架**: Django
-- **API 框架**: Django REST Framework
-- **异步任务队列**: Celery
-- **消息中间件**: Redis
-- **数据库**: Oracle, MySQL
-- **环境管理**: uv
-- **Web 服务器**: uWSGI (根据 `uwsgi.ini` 文件推断)
+- **环境**: Oracle Cloud ARM (Oracle Linux 8)
+- **后端框架**: Django 4.2
+- **API 框架**: Django REST Framework + SimpleJWT
+- **前端框架**: Vue 3 (Composition API)
+- **异步任务**: Celery + Redis
+- **数据库**: Oracle Autonomous DB (Wallet) & MySQL
+- **环境管理**: [uv](https://github.com/astral-sh/uv)
+- **进程管理**: Systemd (Celery, Redis)
+- **Web 服务器**: Nginx + uWSGI
 
 ## 🚀 快速开始
 
 ### 1. 环境准备
 
-- [uv](https://github.com/astral-sh/uv): 极速 Python 包管理器。
-- [Git](https://git-scm.com/): 用于代码版本控制。
-- 数据库服务：安装并运行 Oracle 或 MySQL 数据库。
-
-### 2. 克隆与配置
+本项目已放弃 Conda，改用 **uv** 进行极速依赖管理。
 
 ```bash
-# 克隆项目到本地
+# 安装 uv (如果尚未安装)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 克隆项目
 git clone <your-repository-url>
 cd vueStockapi
 
-# 使用 uv 创建环境并安装依赖
-uv venv --python 3.10
-uv pip install -e .
-# 或者直接使用 uv run (会自动处理环境)
-
-
-# 配置环境变量
-# 在项目根目录下创建一个 .env 文件，并根据 .env.example (如果提供) 或 settings.py 的配置项填入数据库连接信息、密钥等
-# 例如:
-# SECRET_KEY=your_secret_key
-# DEBUG=True
-# DB_USER=your_db_user
-# DB_PASSWORD=your_db_password
+# 同步环境并安装依赖
+uv sync
 ```
 
-### 3. 数据库初始化
+### 2. 配置与运行
+
+- **环境变量**: 参考 `settings.py` 配置 `.env` 文件。
+- **Oracle Wallet**: 确保 Wallet 文件位于 `vueStockapi/` 目录下，并配置 `TNS_ADMIN` 环境变量。
+- **运行服务**:
 
 ```bash
-# 生成数据库迁移文件
-python manage.py makemigrations
-
-# 应用数据库迁移
-python manage.py migrate
-
-# 创建超级管理员用户
-python manage.py createsuperuser
-```
-
-### 4. 运行服务
-
-```bash
-# 启动 Django 开发服务器
+# 启动 Django
 uv run python manage.py runserver
 
-# 启动 Celery Worker (用于处理异步任务)
-uv run celery -A vueStockapi worker -l info -P solo
-
-# 启动 Celery Beat (用于调度周期性任务)
-uv run celery -A vueStockapi beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+# 启动 Celery (生产环境推荐使用 systemctl)
+uv run celery -A vueStockapi worker -l info
 ```
+
+## 🤖 开发规范
+
+本项目遵循 `GEMINI.md` 中定义的开发规范。所有 AI 辅助开发应首先读取该文件以了解：
+- 专家级全栈量化助手的角色定位。
+- 数据库路由与跨库操作规范。
+- 运维与部署的最佳实践。
+
 
 现在，您可以通过浏览器访问 `http://127.0.0.1:8000` 来查看项目运行情况。
 
