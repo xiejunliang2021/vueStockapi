@@ -27,6 +27,9 @@ urlpatterns = [
     
     # 认证相关 API
     path('api/auth/login/', auth_views.login, name='login'),
+    path('api/auth/login_by_key/', auth_views.login_by_key, name='login-by-key'),
+    path('api/auth/generate_key/', auth_views.generate_key, name='generate-key'),
+    path('api/auth/browse_records/', auth_views.get_browse_records, name='browse-records'),
     path('api/auth/user/', auth_views.get_user_info, name='user-info'),
     path('api/auth/logout/', auth_views.logout, name='logout'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
