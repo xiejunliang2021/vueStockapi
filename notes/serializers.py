@@ -1,0 +1,182 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+from django.utils import timezone
+from rest_framework import serializers
+
+from .models import FieldDefinition, Note, NoteType
+
+
+class FieldDefinitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FieldDefinition
+        fields = "__all__"
+        read_only_fields = ["id", "created_at", "updated_at"]
+        # 嵌套路由创建时 note_type 由 URL 提供，不用前端传
+        extra_kwargs = {"note_type": {"required": False}}
+
+    def validate(self, attrs):
+        field_type = attrs.get("field_type", getattr(self.instance, "field_type", None))
+        options = attrs.get("options", getattr(self.instance, "options", []))
+        if field_type == "select" and not options:
+            raise serializers.ValidationError({"options": "下拉类型必须提供候选选项"})
+        show_when_key = attrs.get("show_when_key", getattr(self.instance, "show_when_key", None))
+        note_type = self.context.get("note_type") or attrs.get("note_type")
+        if not note_type and self.instance:
+            note_type = self.instance.note_type
+        if show_when_key and note_type:
+            exists = (
+                FieldDefinition.objects.filter(note_type=note_type, key=show_when_key)
+                .exclude(pk=getattr(self.instance, "pk", None))
+                .exists()
+            )
+            if not exists:
+                raise serializers.ValidationError(
+                    {"show_when_key": f"同类型下没有标识为 {show_when_key} 的字段"}
+                )
+        return attrs
+
+
+class NoteTypeSerializer(serializers.ModelSerializer):
+    fields = FieldDefinitionSerializer(many=True, read_only=True)
+    notes_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = NoteType
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "order",
+            "is_active",
+            "fields",
+            "notes_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+def _coerce_default(field_def):
+    """把字段定义的默认值转成对应类型的值；无默认值返回 None。"""
+    raw = field_def.default_value
+    if raw is None or raw == "":
+        return None
+    if field_def.field_type == "boolean":
+        return str(raw).strip().lower() in ("true", "1", "yes", "是")
+    if field_def.field_type == "datetime" and raw == "__now__":
+        return timezone.now()
+    return raw
+
+
+def validate_field_values(note_type, field_values):
+    """按类型模板校验结构化字段值，返回清洗后的 dict；不合法抛 ValidationError。
+
+    规则：必填不能为空；邮箱要合格式；下拉要在候选值内；条件隐藏的字段值直接丢弃；
+    模板之外的 key 直接丢弃（防脏数据）。
+    """
+    if not isinstance(field_values, dict):
+        raise serializers.ValidationError({"field_values": "结构化字段值必须是对象"})
+    defs = {f.key: f for f in note_type.fields.all()}
+    errors = {}
+    cleaned = {}
+    for key, f in defs.items():
+        value = field_values.get(key)
+        # 未提供时填默认值
+        if value is None or value == "":
+            default = _coerce_default(f)
+            if default is not None:
+                value = default
+        # 条件隐藏的字段：值直接丢弃
+        if not f.is_visible({**field_values, **cleaned}):
+            continue
+        if f.required and (value is None or value == ""):
+            errors[key] = f"{f.label}是必填项"
+            continue
+        if value is None or value == "":
+            continue
+        if f.field_type == "email":
+            try:
+                validate_email(value)
+            except DjangoValidationError:
+                errors[key] = f"{f.label}邮箱格式不正确"
+                continue
+        elif f.field_type == "boolean":
+            if not isinstance(value, bool):
+                errors[key] = f"{f.label}必须是是/否"
+                continue
+        elif f.field_type == "select":
+            if value not in (f.options or []):
+                errors[key] = f"{f.label}必须是候选选项之一"
+                continue
+        elif f.field_type == "datetime":
+            try:
+                value = serializers.DateTimeField().to_internal_value(value)
+            except serializers.ValidationError:
+                errors[key] = f"{f.label}日期时间格式不正确"
+                continue
+            # JSON 字段存不进 datetime 对象，统一转 ISO 字符串
+            value = value.isoformat()
+        elif f.field_type in ("text", "textarea"):
+            if not isinstance(value, str):
+                errors[key] = f"{f.label}必须是文本"
+                continue
+        cleaned[key] = value
+    if errors:
+        raise serializers.ValidationError({"field_values": errors})
+    return cleaned
+
+
+class NoteSerializer(serializers.ModelSerializer):
+    note_type_name = serializers.CharField(source="note_type.name", read_only=True)
+
+    class Meta:
+        model = Note
+        fields = [
+            "id",
+            "note_type",
+            "note_type_name",
+            "title",
+            "field_values",
+            "custom_fields",
+            "content",
+            "folder",
+            "tags",
+            "is_pinned",
+            "is_archived",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+    def validate_title(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("标题不能为空")
+        return value.strip()
+
+    def validate_tags(self, value):
+        if not isinstance(value, list) or not all(isinstance(t, str) for t in value):
+            raise serializers.ValidationError("标签必须是字符串数组")
+        return [t.strip() for t in value if t.strip()]
+
+    def validate_custom_fields(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("自定义字段必须是对象")
+        for key, item in value.items():
+            if not isinstance(item, dict) or "label" not in item or "value" not in item:
+                raise serializers.ValidationError(f"自定义字段 {key} 必须包含 label 和 value")
+        return value
+
+    def validate(self, attrs):
+        note_type = attrs.get("note_type") or getattr(self.instance, "note_type", None)
+        if note_type is None:
+            raise serializers.ValidationError({"note_type": "必须选择笔记类型"})
+        field_values = attrs.get("field_values")
+        if field_values is None and self.instance is not None:
+            field_values = self.instance.field_values
+        if field_values is None:
+            field_values = {}
+        attrs["field_values"] = validate_field_values(note_type, field_values)
+        return attrs

@@ -52,6 +52,8 @@ INSTALLED_APPS = [
     'basic',
     'weighing',
     'backtest',
+    'subscription',
+    'notes',
     'rest_framework',
     'rest_framework_simplejwt',  # JWT 认证
     'django_filters',
@@ -262,13 +264,13 @@ LOGGING = {
         },
         'basic': {
             'handlers': ['file', 'console'],
-            'level': 'WARNING',
+            'level': 'INFO',
             'propagate': True,
         },
         'backtest': {
-            'handlers': ['console'],  # 只输出到控制台,方便实时查看
-            'level': 'INFO',  # 设置为 INFO 级别,显示详细的回测过程
-            'propagate': False,  # 不传播到父logger
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
         },
     },
 }
@@ -290,8 +292,8 @@ SPECTACULAR_SETTINGS = {
 }
 
 # CORS 配置
-# 开发环境：允许所有源访问（生产环境应该设置为 False）
-CORS_ALLOW_ALL_ORIGINS = False
+# 支持从环境变量获取是否允许所有源（针对独立 Linux VPS 与多前端跨公网环境）
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
 
 # 允许访问的源列表
 CORS_ALLOWED_ORIGINS = [
@@ -299,6 +301,29 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",        # 开发环境域名
     "http://127.0.0.1:5173",        # 同样添加 127.0.0.1
 ]
+
+# 支持从环境变量追加额外的前端源 (逗号分隔，如 "https://sub.myfrontend.com,http://1.2.3.4:5173")
+_extra_cors_origins = config('CORS_ALLOWED_ORIGINS', default='')
+if _extra_cors_origins:
+    for _origin in _extra_cors_origins.split(','):
+        _cleaned = _origin.strip()
+        if _cleaned and _cleaned not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(_cleaned)
+
+# 支持正则表达式匹配跨域源
+_cors_origin_regexes = config('CORS_ALLOWED_ORIGIN_REGEXES', default='')
+if _cors_origin_regexes:
+    CORS_ALLOWED_ORIGIN_REGEXES = [r.strip() for r in _cors_origin_regexes.split(',') if r.strip()]
+
+# 节点订阅公网基准 URL（可选，用于在无法自动侦测 Host 时强制指定）
+SUB_BASE_URL = config('SUB_BASE_URL', default='')
+
+# vue-notes 图片上传：Cloudflare R2（S3 API），密钥只放服务器 .env，不要进仓库
+R2_ENDPOINT_URL = config('R2_ENDPOINT_URL', default='')
+R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
+R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
+R2_BUCKET = config('R2_BUCKET', default='img-disk')
+R2_PUBLIC_BASE_URL = config('R2_PUBLIC_BASE_URL', default='https://img-r2.832693.xyz/')
 
 # 是否允许携带认证信息（cookies, HTTP authentication）
 CORS_ALLOW_CREDENTIALS = True

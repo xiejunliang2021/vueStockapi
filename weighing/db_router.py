@@ -1,10 +1,10 @@
 class WeighingRouter:
     """
     数据库路由器：
-    - weighing 和 backtest 应用使用 MySQL 数据库
+    - weighing、backtest、subscription、notes 应用使用 MySQL 数据库
     - 其他应用使用默认的 Oracle 数据库
     """
-    route_app_labels = {'weighing', 'backtest'}
+    route_app_labels = {'weighing', 'backtest', 'subscription', 'notes'}
 
     def db_for_read(self, model, **hints):
         if model._meta.app_label in self.route_app_labels:

@@ -45,6 +45,8 @@ urlpatterns = [
     path('api/basics/', include('basic.urls')),
     path('api/backtest/', include('backtest.urls')),
     path('api/weighing/', include('weighing.urls')),
+    path('api/', include('subscription.urls')),
+    path('api/', include('notes.urls')),
 ]
 
 # 静态文件和媒体文件配置
