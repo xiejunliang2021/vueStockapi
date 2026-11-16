@@ -1,11 +1,18 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import FieldDefinitionViewSet, ImageUploadView, NoteTypeViewSet, NoteViewSet
+from .views import (
+    FieldDefinitionViewSet,
+    FieldOptionViewSet,
+    ImageUploadView,
+    NoteTypeViewSet,
+    NoteViewSet,
+)
 
 router = DefaultRouter()
 router.register(r"note-types", NoteTypeViewSet, basename="note-type")
 router.register(r"notes", NoteViewSet, basename="note")
+router.register(r"field-options", FieldOptionViewSet, basename="field-option")
 
 field_list = FieldDefinitionViewSet.as_view({"get": "list", "post": "create"})
 field_detail = FieldDefinitionViewSet.as_view(

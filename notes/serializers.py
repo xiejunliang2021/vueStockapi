@@ -3,22 +3,52 @@ from django.core.validators import validate_email
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import FieldDefinition, Note, NoteType
+from .models import FieldDefinition, FieldOption, Note, NoteType
+
+
+class FieldOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FieldOption
+        fields = "__all__"
+        read_only_fields = ["id"]
 
 
 class FieldDefinitionSerializer(serializers.ModelSerializer):
+    resolved_options = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = FieldDefinition
-        fields = "__all__"
+        fields = [
+            "id",
+            "note_type",
+            "key",
+            "label",
+            "field_type",
+            "required",
+            "default_value",
+            "options",
+            "option_group",
+            "show_when_key",
+            "show_when_value",
+            "help_text",
+            "order",
+            "resolved_options",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at"]
         # 嵌套路由创建时 note_type 由 URL 提供，不用前端传
         extra_kwargs = {"note_type": {"required": False}}
 
+    def get_resolved_options(self, obj):
+        return obj.resolved_options()
+
     def validate(self, attrs):
         field_type = attrs.get("field_type", getattr(self.instance, "field_type", None))
         options = attrs.get("options", getattr(self.instance, "options", []))
-        if field_type == "select" and not options:
-            raise serializers.ValidationError({"options": "下拉类型必须提供候选选项"})
+        option_group = attrs.get("option_group", getattr(self.instance, "option_group", None))
+        if field_type in ("select", "multiselect") and not options and not option_group:
+            raise serializers.ValidationError({"options": "下拉类型必须提供候选选项或选项组"})
         show_when_key = attrs.get("show_when_key", getattr(self.instance, "show_when_key", None))
         note_type = self.context.get("note_type") or attrs.get("note_type")
         if not note_type and self.instance:
@@ -91,7 +121,7 @@ def validate_field_values(note_type, field_values):
         # 条件隐藏的字段：值直接丢弃
         if not f.is_visible({**field_values, **cleaned}):
             continue
-        if f.required and (value is None or value == ""):
+        if f.required and (value is None or value == "" or value == []):
             errors[key] = f"{f.label}是必填项"
             continue
         if value is None or value == "":
@@ -107,8 +137,16 @@ def validate_field_values(note_type, field_values):
                 errors[key] = f"{f.label}必须是是/否"
                 continue
         elif f.field_type == "select":
-            if value not in (f.options or []):
+            if value not in f.allowed_values():
                 errors[key] = f"{f.label}必须是候选选项之一"
+                continue
+        elif f.field_type == "multiselect":
+            if not isinstance(value, list):
+                errors[key] = f"{f.label}必须是选项数组"
+                continue
+            allowed = f.allowed_values()
+            if any(item not in allowed for item in value):
+                errors[key] = f"{f.label}只能选候选选项里的值"
                 continue
         elif f.field_type == "datetime":
             try:
@@ -137,7 +175,6 @@ class NoteSerializer(serializers.ModelSerializer):
             "id",
             "note_type",
             "note_type_name",
-            "title",
             "field_values",
             "custom_fields",
             "content",
@@ -150,11 +187,6 @@ class NoteSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
-
-    def validate_title(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("标题不能为空")
-        return value.strip()
 
     def validate_tags(self, value):
         if not isinstance(value, list) or not all(isinstance(t, str) for t in value):

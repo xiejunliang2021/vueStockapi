@@ -7,10 +7,11 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import FieldDefinition, Note, NoteType
+from .models import FieldDefinition, FieldOption, Note, NoteType
 from .r2 import R2NotConfigured, upload_image_to_r2
 from .serializers import (
     FieldDefinitionSerializer,
+    FieldOptionSerializer,
     NoteSerializer,
     NoteTypeSerializer,
 )
@@ -50,10 +51,24 @@ class FieldDefinitionViewSet(viewsets.ModelViewSet):
         serializer.save(note_type=self.get_note_type())
 
 
-def _fulltext_queryset(qs, query):
-    """MySQL 全文检索（ngram）：查询词拆成布尔模式的 +词。
+class FieldOptionViewSet(viewsets.ModelViewSet):
+    """下拉选项：增删改查，?group=<key> 按组过滤。"""
 
-    全文无结果时回退到标题/正文模糊匹配（比如单个汉字低于 ngram 最小分词长度）。
+    pagination_class = None
+    serializer_class = FieldOptionSerializer
+
+    def get_queryset(self):
+        qs = FieldOption.objects.all()
+        group = self.request.query_params.get("group")
+        if group:
+            qs = qs.filter(key=group)
+        return qs
+
+
+def _fulltext_queryset(qs, query):
+    """MySQL 全文检索（ngram）：查询词拆成布尔模式的 +词，只查正文。
+
+    全文无结果时回退到正文模糊匹配（比如单个汉字低于 ngram 最小分词长度）。
     """
     tokens = [t for t in re.split(r"\s+", query) if t]
     tokens = [re.sub(r"[+\-*\"()~<>@]", "", t) for t in tokens]
@@ -62,12 +77,12 @@ def _fulltext_queryset(qs, query):
         return qs.none()
     boolean_query = " ".join(f"+{t}" for t in tokens)
     ft_qs = qs.extra(
-        where=["MATCH(`notes_note`.`title`, `notes_note`.`content`) AGAINST (%s IN BOOLEAN MODE)"],
+        where=["MATCH(`notes_note`.`content`) AGAINST (%s IN BOOLEAN MODE)"],
         params=[boolean_query],
     )
     if ft_qs.exists():
         return ft_qs
-    return qs.filter(Q(title__icontains=query) | Q(content__icontains=query))
+    return qs.filter(Q(content__icontains=query))
 
 
 class NoteViewSet(viewsets.ModelViewSet):

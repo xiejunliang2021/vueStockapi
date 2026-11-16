@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Note, NoteType, FieldDefinition
+from .models import FieldDefinition, FieldOption, Note, NoteType
 
 
 @admin.register(NoteType)
@@ -16,6 +16,13 @@ class FieldDefinitionAdmin(admin.ModelAdmin):
 
 @admin.register(Note)
 class NoteAdmin(admin.ModelAdmin):
-    list_display = ["title", "note_type", "folder", "is_pinned", "is_archived", "updated_at"]
+    list_display = ["id", "note_type", "folder", "is_pinned", "is_archived", "updated_at"]
     list_filter = ["note_type", "is_pinned", "is_archived"]
-    search_fields = ["title"]
+    search_fields = ["content"]
+
+
+@admin.register(FieldOption)
+class FieldOptionAdmin(admin.ModelAdmin):
+    list_display = ["key", "value", "label", "sort_order"]
+    list_filter = ["key"]
+    search_fields = ["value", "label"]

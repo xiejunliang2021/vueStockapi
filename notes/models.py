@@ -32,6 +32,7 @@ class FieldDefinition(models.Model):
         ("datetime", "日期时间"),
         ("boolean", "是/否"),
         ("select", "下拉选择"),
+        ("multiselect", "多选下拉"),
     ]
 
     note_type = models.ForeignKey(
@@ -44,6 +45,8 @@ class FieldDefinition(models.Model):
     # 默认值按字段类型解释：boolean 用 "true"/"false"；datetime 用 "__now__" 表示当前时间
     default_value = models.TextField(blank=True, null=True, verbose_name="默认值")
     options = models.JSONField(default=list, blank=True, verbose_name="下拉选项")
+    # 选项组：设置后，下拉选项从 FieldOption 表（key=option_group）实时取，不用内联 options
+    option_group = models.CharField(max_length=50, blank=True, null=True, verbose_name="选项组")
     # 条件显示：仅当 show_when_key 对应字段的值等于 show_when_value 时才显示本字段
     show_when_key = models.CharField(max_length=50, blank=True, null=True, verbose_name="条件字段标识")
     show_when_value = models.JSONField(blank=True, null=True, verbose_name="条件字段取值")
@@ -67,6 +70,51 @@ class FieldDefinition(models.Model):
             return True
         return field_values.get(self.show_when_key) == self.show_when_value
 
+    def resolved_options(self):
+        """下拉候选：配了 option_group 就从 FieldOption 表实时取；否则用内联 options。
+
+        统一返回 [{"value": ..., "label": ...}]，内联选项可能是字符串或 {value, label}。
+        """
+        if self.option_group:
+            return [
+                {"value": o.value, "label": o.label or o.value}
+                for o in FieldOption.objects.filter(key=self.option_group)
+            ]
+        out = []
+        for item in self.options or []:
+            if isinstance(item, dict):
+                out.append({"value": item.get("value"), "label": item.get("label") or item.get("value")})
+            else:
+                out.append({"value": item, "label": item})
+        return out
+
+    def allowed_values(self):
+        """下拉合法取值（校验用）。"""
+        return [o["value"] for o in self.resolved_options()]
+
+
+class FieldOption(models.Model):
+    """下拉选项：按 key 分组（如 platform / email / 2fa_method），用户在页面上自行增删。"""
+
+    key = models.CharField(max_length=50, db_index=True, verbose_name="选项组键")
+    value = models.CharField(max_length=100, verbose_name="选项值")
+    label = models.CharField(max_length=100, blank=True, verbose_name="显示名称")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="排序")
+
+    class Meta:
+        verbose_name = "下拉选项"
+        verbose_name_plural = "下拉选项"
+        unique_together = [("key", "value")]
+        ordering = ["sort_order", "id"]
+
+    def save(self, *args, **kwargs):
+        if not self.label:
+            self.label = self.value
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.key}: {self.label or self.value}"
+
 
 class Note(models.Model):
     """一篇笔记：结构化字段值（JSON）+ Markdown 正文。"""
@@ -74,7 +122,6 @@ class Note(models.Model):
     note_type = models.ForeignKey(
         NoteType, on_delete=models.PROTECT, related_name="notes", verbose_name="笔记类型"
     )
-    title = models.CharField(max_length=200, verbose_name="标题", db_index=True)
     field_values = models.JSONField(default=dict, blank=True, verbose_name="结构化字段值")
     # 自定义字段：{key: {"label": 名称, "type": 类型, "value": 值}}，用户在页面上自行添加
     custom_fields = models.JSONField(default=dict, blank=True, verbose_name="自定义字段")
@@ -96,4 +143,5 @@ class Note(models.Model):
         ]
 
     def __str__(self):
-        return self.title
+        # 无标题字段：用类型名 + 主键标识
+        return f"{self.note_type.name} #{self.pk}"
