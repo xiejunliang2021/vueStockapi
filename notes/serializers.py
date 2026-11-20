@@ -148,6 +148,28 @@ def validate_field_values(note_type, field_values):
             if any(item not in allowed for item in value):
                 errors[key] = f"{f.label}只能选候选选项里的值"
                 continue
+        elif f.field_type == "steps":
+            # 步骤列表：[{text: 字符串, image: 图片 URL 或 null}]，空列表合法
+            if not isinstance(value, list):
+                errors[key] = f"{f.label}必须是步骤数组"
+                continue
+            steps_ok = True
+            for item in value:
+                if not isinstance(item, dict):
+                    errors[key] = f"{f.label}每一步都必须是对象"
+                    steps_ok = False
+                    break
+                if not isinstance(item.get("text", ""), str):
+                    errors[key] = f"{f.label}每一步的文字必须是字符串"
+                    steps_ok = False
+                    break
+                image = item.get("image")
+                if image is not None and not isinstance(image, str):
+                    errors[key] = f"{f.label}每一步的图片必须是 URL 字符串"
+                    steps_ok = False
+                    break
+            if not steps_ok:
+                continue
         elif f.field_type == "datetime":
             try:
                 value = serializers.DateTimeField().to_internal_value(value)

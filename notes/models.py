@@ -33,6 +33,7 @@ class FieldDefinition(models.Model):
         ("boolean", "是/否"),
         ("select", "下拉选择"),
         ("multiselect", "多选下拉"),
+        ("steps", "步骤列表"),
     ]
 
     note_type = models.ForeignKey(
