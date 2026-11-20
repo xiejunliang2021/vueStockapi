@@ -15,7 +15,7 @@ vue-notes 笔记项目的后端，跑在 vueStockapi 里。数据库是事实源
 
 - `GET/POST /api/note-types/`、`GET/PUT/PATCH/DELETE /api/note-types/<id>/`
 - `GET/POST /api/note-types/<id>/fields/`、`GET/PUT/PATCH/DELETE /api/note-types/<id>/fields/<field_id>/`
-- `GET/POST /api/notes/`、`GET/PUT/PATCH/DELETE /api/notes/<id>/`，过滤：`?type=&folder=&tag=&archived=&search=`
+- `GET/POST /api/notes/`、`GET/PUT/PATCH/DELETE /api/notes/<id>/`，过滤：`?type=&folder=&tag=&archived=&search=&field=<字段key>&value=<字段值>`（field/value 按结构化字段值筛选，多选字段按包含匹配）
 - `GET/POST /api/field-options/`、`GET/PUT/PATCH/DELETE /api/field-options/<id>/`，过滤：`?group=<key>`
 - `POST /api/notes/upload-image/`（multipart，字段名 `file`），返回 `{"url": ...}`；上传时默认压缩（最长边 1600px，JPEG 质量 85；透明图转 WebP；GIF 原样），见 `r2.py`
 

@@ -88,7 +88,8 @@ def _fulltext_queryset(qs, query):
 class NoteViewSet(viewsets.ModelViewSet):
     """笔记：增删改查。
 
-    过滤：?type=<类型id> &folder=<文件夹> &tag=<标签> &archived=1 &search=<关键词>。
+    过滤：?type=<类型id> &folder=<文件夹> &tag=<标签> &archived=1 &search=<关键词>
+    &field=<字段key> &value=<字段值>（按结构化字段值筛选，多选字段按包含匹配）。
     默认不含归档笔记；?archived=1 只看归档。
     """
 
@@ -106,6 +107,19 @@ class NoteViewSet(viewsets.ModelViewSet):
         tag = params.get("tag")
         if tag:
             qs = qs.filter(tags__contains=[tag])
+        field_key = params.get("field")
+        field_value = params.get("value")
+        if field_key and field_value:
+            # 只允许该类型下真实存在的字段 key，避免任意 JSON 路径查询
+            fd_qs = FieldDefinition.objects.filter(key=field_key)
+            if note_type:
+                fd_qs = fd_qs.filter(note_type_id=note_type)
+            fd = fd_qs.first()
+            if fd is not None:
+                if fd.field_type == "multiselect":
+                    qs = qs.filter(**{f"field_values__{field_key}__contains": field_value})
+                else:
+                    qs = qs.filter(**{f"field_values__{field_key}": field_value})
         archived = params.get("archived")
         if archived is not None:
             qs = qs.filter(is_archived=archived.lower() in ("1", "true"))
