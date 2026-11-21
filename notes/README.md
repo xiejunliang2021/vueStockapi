@@ -5,7 +5,7 @@ vue-notes 笔记项目的后端，跑在 vueStockapi 里。数据库是事实源
 ## 模型
 
 - **NoteType** 笔记类型：名称、标识、说明。新增类型不用改代码。
-- **FieldDefinition** 字段定义：挂在类型下的结构化字段模板。类型：text / textarea / email / datetime / boolean / select / multiselect；支持必填、默认值、下拉选项、条件显示（`show_when_key` + `show_when_value`）。`option_group` 设置后，下拉选项从 FieldOption 表（key=option_group）实时取，不用内联 options；序列化器输出 `resolved_options`（[{value, label}]）。
+- **FieldDefinition** 字段定义：挂在类型下的结构化字段模板。类型：text / textarea / email / datetime / boolean / select / multiselect / steps；支持必填、默认值、下拉选项、条件显示（`show_when_key` + `show_when_value`，`show_when_negate=true` 时取反）。`option_group` 设置后，下拉选项从 FieldOption 表（key=option_group）实时取，不用内联 options；`exclude_option_values` 列出的值会从候选中去掉；序列化器输出 `resolved_options`（[{value, label}]）。
 - **FieldOption** 下拉选项：key（选项组，如 platform / email / 2fa_method）+ value + label（空时默认等于 value）+ sort_order；(key, value) 唯一。
 - **Note** 笔记：类型外键 + 结构化字段值 JSON + Markdown 正文 + 文件夹 / 标签 / 置顶 / 归档。
 

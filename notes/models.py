@@ -48,9 +48,13 @@ class FieldDefinition(models.Model):
     options = models.JSONField(default=list, blank=True, verbose_name="下拉选项")
     # 选项组：设置后，下拉选项从 FieldOption 表（key=option_group）实时取，不用内联 options
     option_group = models.CharField(max_length=50, blank=True, null=True, verbose_name="选项组")
+    # 排除的选项值：下拉候选里去掉这些值（比如关联平台不列出 Google 自身）
+    exclude_option_values = models.JSONField(default=list, blank=True, verbose_name="排除的选项值")
     # 条件显示：仅当 show_when_key 对应字段的值等于 show_when_value 时才显示本字段
     show_when_key = models.CharField(max_length=50, blank=True, null=True, verbose_name="条件字段标识")
     show_when_value = models.JSONField(blank=True, null=True, verbose_name="条件字段取值")
+    # 条件取反：为 True 时，条件字段值不等于 show_when_value 才显示（比如配置只在平台≠Google 时显示）
+    show_when_negate = models.BooleanField(default=False, verbose_name="条件取反")
     help_text = models.CharField(max_length=200, blank=True, verbose_name="帮助提示")
     order = models.PositiveIntegerField(default=0, verbose_name="排序")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
@@ -66,27 +70,33 @@ class FieldDefinition(models.Model):
         return f"{self.note_type.name} - {self.label}"
 
     def is_visible(self, field_values):
-        """按条件显示：无条件则始终显示；否则当条件字段值等于设定值时显示。"""
+        """按条件显示：无条件则始终显示；否则按条件字段值与设定值是否相等决定，取反时反过来。"""
         if not self.show_when_key:
             return True
-        return field_values.get(self.show_when_key) == self.show_when_value
+        matches = field_values.get(self.show_when_key) == self.show_when_value
+        return (not matches) if self.show_when_negate else matches
 
     def resolved_options(self):
         """下拉候选：配了 option_group 就从 FieldOption 表实时取；否则用内联 options。
 
         统一返回 [{"value": ..., "label": ...}]，内联选项可能是字符串或 {value, label}。
+        exclude_option_values 里列出的值会被去掉（比如关联平台不列出 Google 自身）。
         """
         if self.option_group:
-            return [
+            out = [
                 {"value": o.value, "label": o.label or o.value}
                 for o in FieldOption.objects.filter(key=self.option_group)
             ]
-        out = []
-        for item in self.options or []:
-            if isinstance(item, dict):
-                out.append({"value": item.get("value"), "label": item.get("label") or item.get("value")})
-            else:
-                out.append({"value": item, "label": item})
+        else:
+            out = []
+            for item in self.options or []:
+                if isinstance(item, dict):
+                    out.append({"value": item.get("value"), "label": item.get("label") or item.get("value")})
+                else:
+                    out.append({"value": item, "label": item})
+        excluded = set(self.exclude_option_values or [])
+        if excluded:
+            out = [o for o in out if o["value"] not in excluded]
         return out
 
     def allowed_values(self):
