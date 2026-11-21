@@ -66,9 +66,11 @@ class FieldOptionViewSet(viewsets.ModelViewSet):
 
 
 def _fulltext_queryset(qs, query):
-    """MySQL 全文检索（ngram）：查询词拆成布尔模式的 +词，只查正文。
+    """搜索：正文 MySQL 全文检索（ngram）+ 结构化字段值模糊匹配（步骤文字等）。
 
-    全文无结果时回退到正文模糊匹配（比如单个汉字低于 ngram 最小分词长度）。
+    查询词拆成布尔模式的 +词查正文；同时用 JSON_SEARCH 在 field_values 里
+    做子串匹配，步骤文字、标题、平台等字段值都能搜到。两者都无结果时
+    回退到正文模糊匹配（比如单个汉字低于 ngram 最小分词长度）。
     """
     tokens = [t for t in re.split(r"\s+", query) if t]
     tokens = [re.sub(r"[+\-*\"()~<>@]", "", t) for t in tokens]
@@ -76,12 +78,17 @@ def _fulltext_queryset(qs, query):
     if not tokens:
         return qs.none()
     boolean_query = " ".join(f"+{t}" for t in tokens)
-    ft_qs = qs.extra(
-        where=["MATCH(`notes_note`.`content`) AGAINST (%s IN BOOLEAN MODE)"],
-        params=[boolean_query],
+    # JSON_SEARCH 的匹配串是 LIKE 模式，先转义用户输入里的通配符
+    like = "%" + re.sub(r"([%_\\])", r"\\\1", query) + "%"
+    combined = qs.extra(
+        where=[
+            "(MATCH(`notes_note`.`content`) AGAINST (%s IN BOOLEAN MODE) "
+            "OR JSON_SEARCH(`notes_note`.`field_values`, 'one', %s) IS NOT NULL)"
+        ],
+        params=[boolean_query, like],
     )
-    if ft_qs.exists():
-        return ft_qs
+    if combined.exists():
+        return combined
     return qs.filter(Q(content__icontains=query))
 
 

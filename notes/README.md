@@ -19,7 +19,7 @@ vue-notes 笔记项目的后端，跑在 vueStockapi 里。数据库是事实源
 - `GET/POST /api/field-options/`、`GET/PUT/PATCH/DELETE /api/field-options/<id>/`，过滤：`?group=<key>`
 - `POST /api/notes/upload-image/`（multipart，字段名 `file`），返回 `{"url": ...}`；上传时默认压缩（最长边 1600px，JPEG 质量 85；透明图转 WebP；GIF 原样），见 `r2.py`
 
-搜索用 MySQL 全文索引（ngram，只对正文 content），见 `migrations/0003_…` 里的 RunSQL（0002 建的是 (title, content) 索引，0003 随 title 字段删除一起重建为 content 单列）；全文无结果时回退到正文模糊匹配。
+搜索用 MySQL 全文索引（ngram，查正文 content）+ JSON_SEARCH（查 field_values，步骤文字、标题、平台等字段值都能搜到），见 `migrations/0003_…` 里的 RunSQL（0002 建的是 (title, content) 索引，0003 随 title 字段删除一起重建为 content 单列）；两者都无结果时回退到正文模糊匹配。
 
 必填与格式校验在 serializer 层做（前端表单校验是第二道）。
 
