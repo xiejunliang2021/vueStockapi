@@ -102,11 +102,39 @@ def _coerce_default(field_def):
     return raw
 
 
+def _ensure_options(field_def, values):
+    """下拉新值自动建选项：提交的值不在选项组里时，把它加进 FieldOption 表。
+
+    这样表单上下拉框可以直接输入新值（比如新建 Google 账号时输入新邮箱），
+    下次下拉里就有它了。只对配了 option_group 的字段生效。
+    """
+    if not field_def.option_group:
+        return
+    existing = set(
+        FieldOption.objects.filter(key=field_def.option_group).values_list("value", flat=True)
+    )
+    for v in values:
+        if not isinstance(v, str) or not v.strip() or v in existing:
+            continue
+        last = (
+            FieldOption.objects.filter(key=field_def.option_group)
+            .order_by("-sort_order")
+            .first()
+        )
+        FieldOption.objects.create(
+            key=field_def.option_group,
+            value=v,
+            label=v,
+            sort_order=(last.sort_order + 1) if last else 0,
+        )
+        existing.add(v)
+
+
 def validate_field_values(note_type, field_values):
     """按类型模板校验结构化字段值，返回清洗后的 dict；不合法抛 ValidationError。
 
-    规则：必填不能为空；邮箱要合格式；下拉要在候选值内；条件隐藏的字段值直接丢弃；
-    模板之外的 key 直接丢弃（防脏数据）。
+    规则：必填不能为空；邮箱要合格式；下拉要在候选值内（新值先自动建进选项组）；
+    条件隐藏的字段值直接丢弃；模板之外的 key 直接丢弃（防脏数据）。
     """
     if not isinstance(field_values, dict):
         raise serializers.ValidationError({"field_values": "结构化字段值必须是对象"})
@@ -139,6 +167,7 @@ def validate_field_values(note_type, field_values):
                 errors[key] = f"{f.label}必须是是/否"
                 continue
         elif f.field_type == "select":
+            _ensure_options(f, [value])
             if value not in f.allowed_values():
                 errors[key] = f"{f.label}必须是候选选项之一"
                 continue
@@ -146,6 +175,7 @@ def validate_field_values(note_type, field_values):
             if not isinstance(value, list):
                 errors[key] = f"{f.label}必须是选项数组"
                 continue
+            _ensure_options(f, value)
             allowed = f.allowed_values()
             if any(item not in allowed for item in value):
                 errors[key] = f"{f.label}只能选候选选项里的值"

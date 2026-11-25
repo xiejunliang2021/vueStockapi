@@ -22,6 +22,8 @@ WEBSITE_FIELDS = [
     ("other_auth_desc", "其他验证说明", "text", False, None, [], "has_other_auth", True, "仅当其他验证=是时显示", None, False, []),
     ("has_linked_platforms", "是否关联了其他平台", "boolean", False, "false", [], "platform", "Google", "仅当平台=Google 时显示", None, False, []),
     ("linked_platforms", "关联平台", "multiselect", False, None, [], "has_linked_platforms", True, "仅当关联了其他平台时显示", "platform", False, ["Google"]),
+    ("verify_email", "验证邮箱", "email", False, None, [], "platform", "Google", "", None, False, []),
+    ("verify_phone", "验证手机", "text", False, None, [], "platform", "Google", "", None, False, []),
     ("config", "配置", "textarea", False, None, [], "platform", "Google", "", None, True, []),
     ("remark", "备注", "textarea", False, None, [], None, None, "支持 Markdown", None, False, []),
 ]
