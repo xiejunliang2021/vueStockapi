@@ -147,7 +147,10 @@ def validate_field_values(note_type, field_values):
     """
     if not isinstance(field_values, dict):
         raise serializers.ValidationError({"field_values": "结构化字段值必须是对象"})
-    defs = {f.key: f for f in note_type.fields.all()}
+    # Oracle 上 JSON/LOB 列的取回需要 ORDER BY + FETCH FIRST（Top-N 查询随行预取
+    # LOB）：不带 limit 的查询每个 JSON 值多一次 Phoenix 往返，16 个字段定义约 7.3 秒。
+    # limit 1000 远大于实际字段数，不会截断；顺序与模型 Meta ordering 一致，返回结构不变。
+    defs = {f.key: f for f in note_type.fields.all().order_by("order", "id")[:1000]}
     errors = {}
     cleaned = {}
     for key, f in defs.items():
