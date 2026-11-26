@@ -18,7 +18,7 @@
 
 ## 📜 编码与架构规范
 - **代码规范**: 严格遵循 PEP8 (Python) 和 Vue 3 官方推荐规范。
-- **数据库路由**: 跨库操作需参考 `db_router.py`。Oracle 库主要存放行情与回测底表，MySQL 存放业务配置。
+- **数据库路由**: 跨库操作需参考 `weighing/db_router.py`。Oracle 库主要存放行情与回测底表，MySQL 存放业务配置。
 - **环境隔离**: 敏感配置必须通过 `.env` 管理，禁止直接硬编码。
 - **验证流**: 修改后端逻辑后，必须使用 `uv run python manage.py test` 或 `pytest` 验证。
 

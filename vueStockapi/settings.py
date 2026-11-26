@@ -1,24 +1,15 @@
 from decouple import config
 from pathlib import Path
-import oracledb
 import os
 from celery.schedules import crontab
 import logging
 
+# Oracle 连接参数的唯一事实源头见 .oracle_config（只读 .env，不写密码）
+from .oracle_config import ORACLE_CONFIG, ORACLE_DJANGO_OPTIONS
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Initialize Oracle client
-# Initialize Oracle client
-# try:
-#     wallet_location = config('WALLET_LOCATION')
-#     if wallet_location and os.path.exists(wallet_location):
-#         oracledb.init_oracle_client(config_dir=wallet_location)
-#         logging.info(f"Oracle client initialized with wallet location: {wallet_location}")
-#     else:
-#         logging.warning(f"Oracle wallet location not found or not configured: {wallet_location}")
-# except Exception as e:
-#     logging.error(f"Error initializing Oracle client: {e}")
 
 
 # Quick-start development settings - unsuitable for production
@@ -32,9 +23,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*' ]
 
-# 定义钱包相关路径和密码
-WALLET_DIRECTORY = config('WALLET_DIRECTORY')
-WALLET_PEM_PASS_PHRASE = config('WALLET_PEM_PASS_PHRASE')
+# Oracle 钱包目录 / 密码见 .oracle_config（ORACLE_CONFIG），这里不再重复读 .env
 
 
 # Application definition
@@ -97,46 +86,16 @@ WSGI_APPLICATION = 'vueStockapi.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-# DATABASES = {
-#
-
-    # 'default': {
-    #     'ENGINE': 'django.db.backends.oracle',
-    #     'NAME': config('NAME_ORACLE',),
-    #     'USER': config('USER_ORACLE',),
-    #     'PASSWORD': config('PASSWORD_ORACLE',),
-    #     'HOST': '',
-    #     'PORT': '',
-    #     'CONN_MAX_AGE': 0,  # 禁用连接持久化
-    #     'OPTIONS': {
-    #         'retry_count': 3,
-    #         'retry_delay': 1,
-    #         'ssl_server_dn_match': True,
-    #     },
-    #     'TEST': {
-    #         'NAME': 'test_' + config('NAME_ORACLE',),
-    #     },
-    # },
-# }
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.oracle',
-        'NAME': config('NAME_ORACLE', ),
-        'USER': config('USER_ORACLE', ),
-        'PASSWORD': config('PASSWORD_ORACLE', ),
+        'NAME': ORACLE_CONFIG['tns_name'],
+        'USER': ORACLE_CONFIG['user'],
+        'PASSWORD': ORACLE_CONFIG['password'],
         'HOST': '',
         'PORT': '',
         'CONN_MAX_AGE': 0,  # 禁用连接持久化
-        'OPTIONS': {
-            'retry_count': 3,
-            'retry_delay': 1,
-            'ssl_server_dn_match': True,
-            # 这些选项会传递给 python-oracledb 驱动
-            'config_dir': WALLET_DIRECTORY,
-            'wallet_location': WALLET_DIRECTORY,  # 通常与 config_dir 相同
-            'wallet_password': WALLET_PEM_PASS_PHRASE,  # 钱包的密码 (PEM pass phrase)
-
-        }
+        'OPTIONS': ORACLE_DJANGO_OPTIONS,
 
     },
     'mysql': {
