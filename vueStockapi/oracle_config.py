@@ -32,6 +32,13 @@ import time
 from pathlib import Path
 
 import oracledb
+
+# 延迟优化（vue-notes → Oracle 迁移）：LOB 随行取数 + 客户端预取。
+# 只推代码不设此默认值，ORDER BY + FETCH FIRST 优化无效（列表仍 10 秒级）。
+# 作用于同一进程内所有 Oracle 连接（含 stockapi 'default' 库），预期无害或有益。
+oracledb.defaults.fetch_lobs = False
+oracledb.defaults.prefetchrows = 100
+
 from decouple import config
 
 
@@ -164,3 +171,70 @@ def test_connection() -> dict:
         "db_time": str(db_time),
         "elapsed": round(time.time() - started, 2),
     }
+
+# ---------------------------------------------------------------------------
+# xiansanzhenren（新库，Phoenix，vue-notes 迁移目标库）
+# 与上面 stockapi 的 Oracle 配置完全同款模式：只读 .env 的 XSZR_*，
+# 校验钱包目录与 TNS 别名在钱包 tnsnames.ora 里，Thin 模式。
+# 凭据不进代码。settings.py 的 DATABASES['notes_oracle'] 用这里的
+# XSZR_ORACLE_CONFIG / XSZR_ORACLE_DJANGO_OPTIONS。
+# ---------------------------------------------------------------------------
+
+
+def load_xszr_config() -> dict:
+    """从 .env 读 xiansanzhenren 配置并校验，缺项 / 钱包不对时直接报清楚原因。"""
+    user = config("XSZR_USER", default="")
+    password = config("XSZR_PASSWORD", default="")
+    tns_name = config("XSZR_TNS_NAME", default="")
+    wallet = config("XSZR_WALLET_DIRECTORY", default="")
+    wallet_password = config("XSZR_WALLET_PASSWORD", default="")
+
+    missing = [
+        name
+        for name, value in [
+            ("XSZR_USER", user),
+            ("XSZR_PASSWORD", password),
+            ("XSZR_TNS_NAME", tns_name),
+            ("XSZR_WALLET_DIRECTORY", wallet),
+        ]
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(f"xiansanzhenren 连接配置缺失，请检查 .env：{', '.join(missing)}")
+
+    wallet_path = Path(wallet).expanduser()
+    if not wallet_path.is_dir():
+        raise RuntimeError(f"xiansanzhenren 钱包目录不存在：{wallet}")
+    tns_file = wallet_path / "tnsnames.ora"
+    if tns_file.is_file():
+        aliases = re.findall(
+            r"(?m)^\s*([A-Za-z0-9_]+)\s*=",
+            tns_file.read_text(errors="ignore"),
+        )
+        if tns_name not in aliases:
+            raise RuntimeError(
+                f"TNS 别名 {tns_name} 不在 {tns_file} 里，现有别名："
+                f"{', '.join(aliases)}"
+            )
+
+    return {
+        "user": user,
+        "password": password,
+        "tns_name": tns_name,
+        "wallet_directory": str(wallet_path),
+        "wallet_password": wallet_password,
+    }
+
+
+# settings.py 在 import 时就会读一次，配置有问题启动即报错，别等到第一次查库。
+XSZR_ORACLE_CONFIG = load_xszr_config()
+
+# 传给 Django Oracle 后端（进而传给 python-oracledb）的连接选项。
+XSZR_ORACLE_DJANGO_OPTIONS = {
+    "retry_count": 3,
+    "retry_delay": 1,
+    "ssl_server_dn_match": True,
+    "config_dir": XSZR_ORACLE_CONFIG["wallet_directory"],
+    "wallet_location": XSZR_ORACLE_CONFIG["wallet_directory"],
+    "wallet_password": XSZR_ORACLE_CONFIG["wallet_password"],
+}

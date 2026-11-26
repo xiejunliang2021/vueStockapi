@@ -43,6 +43,15 @@ class FieldDefinitionSerializer(serializers.ModelSerializer):
         extra_kwargs = {"note_type": {"required": False}}
 
     def get_resolved_options(self, obj):
+        # 修复 ③：上下文里有一次取全的选项表时直接用它，不再逐字段定义查库；
+        # 上下文缺失时回退到逐条查询，行为与之前完全一致（含排除项过滤与排序）。
+        options_map = self.context.get("field_options_map")
+        if options_map is not None and obj.option_group:
+            out = list(options_map.get(obj.option_group, []))
+            excluded = set(obj.exclude_option_values or [])
+            if excluded:
+                out = [o for o in out if o["value"] not in excluded]
+            return out
         return obj.resolved_options()
 
     def validate(self, attrs):

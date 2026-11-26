@@ -3,6 +3,29 @@
 from django.db import migrations, models
 
 
+def rebuild_fulltext_index(apps, schema_editor):
+    # MySQL 专属 DDL：只在 MySQL 上执行；Oracle 上跳过
+    #（Oracle 侧搜索方案另定，见迁移设计文档）。
+    if schema_editor.connection.vendor != "mysql":
+        return
+    schema_editor.execute("DROP INDEX notes_note_search_idx ON notes_note;")
+    schema_editor.execute(
+        "CREATE FULLTEXT INDEX notes_note_search_idx "
+        "ON notes_note (content) WITH PARSER ngram;"
+    )
+
+
+def restore_fulltext_index(apps, schema_editor):
+    # 0003 的反向操作：恢复含 title 的旧全文索引；同样只在 MySQL 上执行。
+    if schema_editor.connection.vendor != "mysql":
+        return
+    schema_editor.execute("DROP INDEX notes_note_search_idx ON notes_note;")
+    schema_editor.execute(
+        "CREATE FULLTEXT INDEX notes_note_search_idx "
+        "ON notes_note (title, content) WITH PARSER ngram;"
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,18 +35,7 @@ class Migration(migrations.Migration):
     operations = [
         # 先重建全文索引：旧索引含 title 列，删列前必须先换掉；
         # 新索引只对 content（title 字段已移除），同名复用。
-        migrations.RunSQL(
-            [
-                "DROP INDEX notes_note_search_idx ON notes_note;",
-                "CREATE FULLTEXT INDEX notes_note_search_idx "
-                "ON notes_note (content) WITH PARSER ngram;",
-            ],
-            reverse_sql=[
-                "DROP INDEX notes_note_search_idx ON notes_note;",
-                "CREATE FULLTEXT INDEX notes_note_search_idx "
-                "ON notes_note (title, content) WITH PARSER ngram;",
-            ],
-        ),
+        migrations.RunPython(rebuild_fulltext_index, restore_fulltext_index),
         migrations.RemoveField(
             model_name='note',
             name='title',

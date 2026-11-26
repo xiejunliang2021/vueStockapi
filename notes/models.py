@@ -1,6 +1,35 @@
 from django.db import models
 
 
+class OracleTolerantJSONField(models.JSONField):
+    """JSONField：兼容 Oracle 读路径（只改读，不改写、不改列类型、不产生迁移）。
+
+    实测（Oracle 26ai + python-oracledb 2.5.1，NCLOB + IS JSON 列）：
+    - 写入没问题：顶层原始值（字符串 'Google'、布尔 True）与对象/数组都能存。
+    - 读出时驱动层已经把对象/数组解成了 dict/list，顶层原始值仍是 str。
+      Django 4.2 的 JSONField.from_db_value() 假定读到的总是 str，直接
+      json.loads(value)，只捕 JSONDecodeError；值已是 dict/list 时就抛
+      TypeError: the JSON object must be str, bytes or bytearray, not list
+      ——于是 Oracle 上任何含 JSON 对象/数组的行都读不出来。
+    这里只放宽读路径：非 str（已解码好的 dict/list/bool/数字）原样返回，
+    str 才走父类的 json.loads。写路径（get_db_prep_value）与列类型完全
+    继承内置 JSONField；deconstruct() 也返回内置 JSONField 路径，因此
+    makemigrations 无变化、不产生新迁移，MySQL 侧零影响（旧形状裸原始值
+    与新数据在 MySQL 上的读写与改动前完全一致）。
+    """
+
+    def from_db_value(self, value, expression, connection):
+        if value is None or not isinstance(value, str):
+            # 驱动已解码好的 dict/list/bool/数字：原样返回，不再 json.loads。
+            return value
+        return super().from_db_value(value, expression, connection)
+
+    def deconstruct(self):
+        # 与内置 JSONField 同构：不产生迁移，迁移状态仍与 0001/0003/0005 一致。
+        name, path, args, kwargs = super().deconstruct()
+        return name, "django.db.models.JSONField", args, kwargs
+
+
 class NoteType(models.Model):
     """笔记类型，如：网站注册。字段模板挂在类型下，新增类型不用改代码。"""
 
@@ -45,14 +74,14 @@ class FieldDefinition(models.Model):
     required = models.BooleanField(default=False, verbose_name="是否必填")
     # 默认值按字段类型解释：boolean 用 "true"/"false"；datetime 用 "__now__" 表示当前时间
     default_value = models.TextField(blank=True, null=True, verbose_name="默认值")
-    options = models.JSONField(default=list, blank=True, verbose_name="下拉选项")
+    options = OracleTolerantJSONField(default=list, blank=True, verbose_name="下拉选项")
     # 选项组：设置后，下拉选项从 FieldOption 表（key=option_group）实时取，不用内联 options
     option_group = models.CharField(max_length=50, blank=True, null=True, verbose_name="选项组")
     # 排除的选项值：下拉候选里去掉这些值（比如关联平台不列出 Google 自身）
-    exclude_option_values = models.JSONField(default=list, blank=True, verbose_name="排除的选项值")
+    exclude_option_values = OracleTolerantJSONField(default=list, blank=True, verbose_name="排除的选项值")
     # 条件显示：仅当 show_when_key 对应字段的值等于 show_when_value 时才显示本字段
     show_when_key = models.CharField(max_length=50, blank=True, null=True, verbose_name="条件字段标识")
-    show_when_value = models.JSONField(blank=True, null=True, verbose_name="条件字段取值")
+    show_when_value = OracleTolerantJSONField(blank=True, null=True, verbose_name="条件字段取值")
     # 条件取反：为 True 时，条件字段值不等于 show_when_value 才显示（比如配置只在平台≠Google 时显示）
     show_when_negate = models.BooleanField(default=False, verbose_name="条件取反")
     help_text = models.CharField(max_length=200, blank=True, verbose_name="帮助提示")
@@ -133,12 +162,12 @@ class Note(models.Model):
     note_type = models.ForeignKey(
         NoteType, on_delete=models.PROTECT, related_name="notes", verbose_name="笔记类型"
     )
-    field_values = models.JSONField(default=dict, blank=True, verbose_name="结构化字段值")
+    field_values = OracleTolerantJSONField(default=dict, blank=True, verbose_name="结构化字段值")
     # 自定义字段：{key: {"label": 名称, "type": 类型, "value": 值}}，用户在页面上自行添加
-    custom_fields = models.JSONField(default=dict, blank=True, verbose_name="自定义字段")
+    custom_fields = OracleTolerantJSONField(default=dict, blank=True, verbose_name="自定义字段")
     content = models.TextField(blank=True, verbose_name="Markdown 正文")
     folder = models.CharField(max_length=100, blank=True, db_index=True, verbose_name="文件夹")
-    tags = models.JSONField(default=list, blank=True, verbose_name="标签")
+    tags = OracleTolerantJSONField(default=list, blank=True, verbose_name="标签")
     is_pinned = models.BooleanField(default=False, verbose_name="是否置顶")
     is_archived = models.BooleanField(default=False, verbose_name="是否归档")
     created_by = models.CharField(max_length=150, blank=True, verbose_name="创建人")

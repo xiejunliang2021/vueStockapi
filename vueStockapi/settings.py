@@ -5,7 +5,12 @@ from celery.schedules import crontab
 import logging
 
 # Oracle 连接参数的唯一事实源头见 .oracle_config（只读 .env，不写密码）
-from .oracle_config import ORACLE_CONFIG, ORACLE_DJANGO_OPTIONS
+from .oracle_config import (
+    ORACLE_CONFIG,
+    ORACLE_DJANGO_OPTIONS,
+    XSZR_ORACLE_CONFIG,
+    XSZR_ORACLE_DJANGO_OPTIONS,
+)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -109,7 +114,20 @@ DATABASES = {
         'OPTIONS': {
             'charset': 'utf8mb4',
         }
-    }
+    },
+    # vue-notes 迁移目标库 xiansanzhenren（Phoenix）。线上路由仍指 MySQL，
+    # 这里只注册连接，不动 DATABASE_ROUTERS、不动 'default' 和 'mysql'。
+    # CONN_MAX_AGE=300：持久连接，到 Phoenix 每次新建连接都要付一次 mTLS 握手，不能用 0；60 秒太短，单用户低流量下多数点击是冷首击。
+    'notes_oracle': {
+        'ENGINE': 'django.db.backends.oracle',
+        'NAME': XSZR_ORACLE_CONFIG['tns_name'],
+        'USER': XSZR_ORACLE_CONFIG['user'],
+        'PASSWORD': XSZR_ORACLE_CONFIG['password'],
+        'HOST': '',
+        'PORT': '',
+        'CONN_MAX_AGE': 300,
+        'OPTIONS': XSZR_ORACLE_DJANGO_OPTIONS,
+    },
 }
 
 DATABASE_ROUTERS = ['weighing.db_router.WeighingRouter']
