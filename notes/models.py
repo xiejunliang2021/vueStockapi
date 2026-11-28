@@ -185,3 +185,28 @@ class Note(models.Model):
     def __str__(self):
         # 无标题字段：用类型名 + 主键标识
         return f"{self.note_type.name} #{self.pk}"
+
+
+# ---------------------------------------------------------------------------
+# note-types 元数据缓存失效信号
+# 覆盖 Admin 与 API 所有写路径（NoteType / FieldDefinition / FieldOption
+# 的新增、修改、删除均通过 post_save / post_delete 失效缓存）。
+# 注意：QuerySet.update() / bulk_create 不触发信号，如有此类写入路径
+# 需手动调用 cache.delete(NOTE_TYPES_LIST_CACHE_KEY)。
+# ---------------------------------------------------------------------------
+from django.core.cache import cache
+from django.db.models.signals import post_delete, post_save
+
+NOTE_TYPES_LIST_CACHE_KEY = "notes:note_types_list"
+
+
+def invalidate_note_types_cache(sender, **kwargs):
+    cache.delete(NOTE_TYPES_LIST_CACHE_KEY)
+
+
+post_save.connect(invalidate_note_types_cache, sender=NoteType)
+post_delete.connect(invalidate_note_types_cache, sender=NoteType)
+post_save.connect(invalidate_note_types_cache, sender=FieldDefinition)
+post_delete.connect(invalidate_note_types_cache, sender=FieldDefinition)
+post_save.connect(invalidate_note_types_cache, sender=FieldOption)
+post_delete.connect(invalidate_note_types_cache, sender=FieldOption)

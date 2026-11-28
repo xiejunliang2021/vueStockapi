@@ -2,6 +2,7 @@ import json
 import re
 
 from botocore.exceptions import ClientError
+from django.core.cache import cache
 from django.db import connections
 from django.http import Http404
 from django.db.models import Count, Q
@@ -10,8 +11,16 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import FieldDefinition, FieldOption, Note, NoteType
+from .models import (
+    FieldDefinition,
+    FieldOption,
+    Note,
+    NoteType,
+    NOTE_TYPES_LIST_CACHE_KEY,
+)
 from .r2 import R2NotConfigured, upload_image_to_r2
+
+NOTE_TYPES_CACHE_TTL = 600  # 10 分钟缓存（TTL 保底；写路径失效见 models.py 信号）
 def _field_options_map():
     """一次取全 FieldOption，按 key 分组（FieldOption 无 LOB 列，单查询约 0.2 秒）。
 
@@ -73,10 +82,18 @@ class NoteTypeViewSet(viewsets.ModelViewSet):
             nt._prefetched_objects_cache = {"fields": by_type.get(nt.id, [])}
 
     def list(self, request, *args, **kwargs):
+        # 缓存优化：note-types 是低频变更的元数据（类型/字段/选项），
+        # 缓存 10 分钟（TTL 保底）；写路径通过 models.py 的 post_save/post_delete
+        # 信号失效当前 worker 的缓存。跨 worker 失效依赖 TTL（LocMemCache 进程独立）。
+        cached = cache.get(NOTE_TYPES_LIST_CACHE_KEY)
+        if cached is not None:
+            return Response(cached)
         note_types = list(self.filter_queryset(self.get_queryset()))
         self._attach_fields(note_types)
         serializer = self.get_serializer(note_types, many=True)
-        return Response(serializer.data)
+        data = serializer.data
+        cache.set(NOTE_TYPES_LIST_CACHE_KEY, data, NOTE_TYPES_CACHE_TTL)
+        return Response(data)
 
     def retrieve(self, request, *args, **kwargs):
         note_type = get_object_or_404(

@@ -115,9 +115,12 @@ DATABASES = {
             'charset': 'utf8mb4',
         }
     },
-    # vue-notes 迁移目标库 xiansanzhenren（Phoenix）。线上路由仍指 MySQL，
+    # vue-notes 迁移目标库 xiansanzhenren（Phoenix）。线上路由已指 notes_oracle（2026-11-26 切换），
     # 这里只注册连接，不动 DATABASE_ROUTERS、不动 'default' 和 'mysql'。
-    # CONN_MAX_AGE=300：持久连接，到 Phoenix 每次新建连接都要付一次 mTLS 握手，不能用 0；60 秒太短，单用户低流量下多数点击是冷首击。
+    # CONN_MAX_AGE=1800：持久连接，原 300 秒太短，8 个 worker 轮询时空闲超 300s 即需重新 mTLS 握手（+1.7s）。
+    # 1800s = 30 分钟，覆盖大多数零散使用场景；超 30 分钟的冷启动由保活方案补。
+    # 不加 CONN_HEALTH_CHECKS：实测每次请求多一次 Phoenix 往返约 0.2 秒（列表 0.65→0.46 秒），得不偿失；
+    # 连接若被服务端先断掉，下次请求报错一次、重试即恢复（Django 会丢弃坏连接）。
     'notes_oracle': {
         'ENGINE': 'django.db.backends.oracle',
         'NAME': XSZR_ORACLE_CONFIG['tns_name'],
@@ -125,7 +128,7 @@ DATABASES = {
         'PASSWORD': XSZR_ORACLE_CONFIG['password'],
         'HOST': '',
         'PORT': '',
-        'CONN_MAX_AGE': 300,
+        'CONN_MAX_AGE': 1800,
         'OPTIONS': XSZR_ORACLE_DJANGO_OPTIONS,
     },
 }

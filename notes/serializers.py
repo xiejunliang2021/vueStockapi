@@ -111,32 +111,60 @@ def _coerce_default(field_def):
     return raw
 
 
-def _ensure_options(field_def, values):
+def _ensure_options(field_def, values, options_cache=None):
     """下拉新值自动建选项：提交的值不在选项组里时，把它加进 FieldOption 表。
 
     这样表单上下拉框可以直接输入新值（比如新建 Google 账号时输入新邮箱），
     下次下拉里就有它了。只对配了 option_group 的字段生效。
+    如果提供了 options_cache，优先使用并在新建后同步更新，避免重复查库。
     """
-    if not field_def.option_group:
+    grp = field_def.option_group
+    if not grp:
         return
-    existing = set(
-        FieldOption.objects.filter(key=field_def.option_group).values_list("value", flat=True)
-    )
+    if options_cache is not None and grp in options_cache:
+        existing = {opt.value for opt in options_cache[grp]}
+    else:
+        existing = set(
+            FieldOption.objects.filter(key=grp).values_list("value", flat=True)
+        )
     for v in values:
         if not isinstance(v, str) or not v.strip() or v in existing:
             continue
-        last = (
-            FieldOption.objects.filter(key=field_def.option_group)
-            .order_by("-sort_order")
-            .first()
-        )
-        FieldOption.objects.create(
-            key=field_def.option_group,
+        if options_cache is not None and grp in options_cache and options_cache[grp]:
+            last_order = max(opt.sort_order for opt in options_cache[grp])
+            new_order = last_order + 1
+        else:
+            last = (
+                FieldOption.objects.filter(key=grp)
+                .order_by("-sort_order")
+                .first()
+            )
+            new_order = (last.sort_order + 1) if last else 0
+        new_opt = FieldOption.objects.create(
+            key=grp,
             value=v,
             label=v,
-            sort_order=(last.sort_order + 1) if last else 0,
+            sort_order=new_order,
         )
         existing.add(v)
+        if options_cache is not None and grp in options_cache:
+            options_cache[grp].append(new_opt)
+
+
+def _get_allowed_values(field_def, options_cache=None):
+    """获取下拉字段的合法候选值。
+
+    若提供了 options_cache 且字段配了 option_group，直接基于内存列表计算，
+    不再查库；同样正确应用 exclude_option_values 排除。
+    """
+    grp = field_def.option_group
+    if grp and options_cache is not None and grp in options_cache:
+        out = [opt.value for opt in options_cache[grp]]
+        excluded = set(field_def.exclude_option_values or [])
+        if excluded:
+            out = [v for v in out if v not in excluded]
+        return out
+    return field_def.allowed_values()
 
 
 def validate_field_values(note_type, field_values):
@@ -151,6 +179,23 @@ def validate_field_values(note_type, field_values):
     # LOB）：不带 limit 的查询每个 JSON 值多一次 Phoenix 往返，16 个字段定义约 7.3 秒。
     # limit 1000 远大于实际字段数，不会截断；顺序与模型 Meta ordering 一致，返回结构不变。
     defs = {f.key: f for f in note_type.fields.all().order_by("order", "id")[:1000]}
+
+    # 优化 ①：一次性拉取该类型下所有 select/multiselect 字段涉及的选项组，
+    # 避免每个字段在 _ensure_options 和 allowed_values 两个阶段反复查库。
+    # 节省的查询数 = 下拉字段数 × 2 次往返（原 _ensure_options 一次、allowed_values 一次）。
+    needed_groups = {
+        f.option_group
+        for f in defs.values()
+        if f.field_type in ("select", "multiselect") and f.option_group
+    }
+    options_cache: dict = {}
+    if needed_groups:
+        for opt in FieldOption.objects.filter(key__in=needed_groups).order_by("sort_order", "id"):
+            options_cache.setdefault(opt.key, []).append(opt)
+        # 确保每个组的 key 都存在（即使该组当前没有选项也要有空列表）
+        for grp in needed_groups:
+            options_cache.setdefault(grp, [])
+
     errors = {}
     cleaned = {}
     for key, f in defs.items():
@@ -179,16 +224,16 @@ def validate_field_values(note_type, field_values):
                 errors[key] = f"{f.label}必须是是/否"
                 continue
         elif f.field_type == "select":
-            _ensure_options(f, [value])
-            if value not in f.allowed_values():
+            _ensure_options(f, [value], options_cache=options_cache)
+            if value not in _get_allowed_values(f, options_cache=options_cache):
                 errors[key] = f"{f.label}必须是候选选项之一"
                 continue
         elif f.field_type == "multiselect":
             if not isinstance(value, list):
                 errors[key] = f"{f.label}必须是选项数组"
                 continue
-            _ensure_options(f, value)
-            allowed = f.allowed_values()
+            _ensure_options(f, value, options_cache=options_cache)
+            allowed = _get_allowed_values(f, options_cache=options_cache)
             if any(item not in allowed for item in value):
                 errors[key] = f"{f.label}只能选候选选项里的值"
                 continue
